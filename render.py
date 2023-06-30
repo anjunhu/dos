@@ -11,44 +11,58 @@ RADIUS = 5    # Radius of the sphere
 UP = (0, 0, 1) # Up direction
 
 
-# Clear all Meshes
-bpy.ops.object.select_all(action='DESELECT')
-bpy.ops.object.select_by_type(type='MESH')
-bpy.ops.object.delete()
-
-# Clear all armature objects
-bpy.ops.object.select_all(action='DESELECT')
-bpy.ops.object.select_by_type(type='ARMATURE')
-bpy.ops.object.delete()
-
-# Clear all Cameras
-bpy.ops.object.select_all(action='DESELECT')
-bpy.ops.object.select_by_type(type='CAMERA')
-bpy.ops.object.delete()
-
-
 file_path = '/scratch/local/hdd/tomj/datasets/synth_animals/data/DOC/3dModels/horse/02_released/horse_009_arabian_galgoPosesV1.glb'
 texture_path = '/scratch/local/hdd/tomj/datasets/synth_animals/data/DOC/maps/frankensteinDiffuses_v001/diffuse_horse_*.jpg'
-out_dir = '/scratch/local/hdd/tomj/datasets/synth_animals/renders/v1'
-n_renders = 1000
+out_dir = '/scratch/local/hdd/tomj/datasets/synth_animals/renders/v1-debug'
+n_renders = 10
+random_frame = False
+fov = 40
 
 
-# Set render engine to CYCLES
-bpy.context.scene.render.engine = 'CYCLES'
+def clean_up_scene():
+    # Clear all Meshes
+    bpy.ops.object.select_all(action='DESELECT')
+    bpy.ops.object.select_by_type(type='MESH')
+    bpy.ops.object.delete()
 
-# Enable GPU
-bpy.context.preferences.addons['cycles'].preferences.compute_device_type = 'CUDA' # or 'OPENCL' or 'NONE' 
+    # Clear all armature objects
+    bpy.ops.object.select_all(action='DESELECT')
+    bpy.ops.object.select_by_type(type='ARMATURE')
+    bpy.ops.object.delete()
 
-# Get list of all the available devices (GPUs in this case)
-devices = bpy.context.preferences.addons['cycles'].preferences.get_devices()
+    # Clear all Cameras
+    bpy.ops.object.select_all(action='DESELECT')
+    bpy.ops.object.select_by_type(type='CAMERA')
+    bpy.ops.object.delete()
 
-# Enable all GPU devices
-for device in devices:
-    for subdevice in device:
-        subdevice.use = True
 
-# Set device to GPU
-bpy.context.scene.cycles.device = 'GPU'
+def setup_renderer():
+    # Set render engine to CYCLES
+    bpy.context.scene.render.engine = 'CYCLES'
+
+    # Enable GPU
+    bpy.context.preferences.addons['cycles'].preferences.compute_device_type = 'CUDA' # or 'OPENCL' or 'NONE' 
+
+    # Get list of all the available devices (GPUs in this case)
+    devices = bpy.context.preferences.addons['cycles'].preferences.get_devices()
+
+    # Enable all GPU devices
+    for device in devices:
+        for subdevice in device:
+            subdevice.use = True
+
+    # Set device to GPU
+    bpy.context.scene.cycles.device = 'GPU'
+
+    # Set render settings
+    bpy.context.scene.render.engine = 'CYCLES'
+    bpy.context.scene.render.image_settings.file_format = 'PNG'
+    bpy.context.scene.render.resolution_x = 256
+    bpy.context.scene.render.resolution_y = 256
+
+
+clean_up_scene()
+setup_renderer()
 
 # Find texture files matching the pattern
 texture_files = glob.glob(texture_path)
@@ -92,11 +106,7 @@ camera = bpy.context.object
 # Set the active camera
 bpy.context.scene.camera = camera
 
-# Set render settings
-bpy.context.scene.render.engine = 'CYCLES'
-bpy.context.scene.render.image_settings.file_format = 'PNG'
-bpy.context.scene.render.resolution_x = 256
-bpy.context.scene.render.resolution_y = 256
+random.seed(0)
 
 # Render from n different random views
 for i in range(n_renders):
@@ -130,8 +140,9 @@ for i in range(n_renders):
     point_light.data.energy = random_energy    
     
     # Choose a random frame between 0 and 100
-    frame = random.randint(0, 100)
-    bpy.context.scene.frame_set(frame)
+    if random_frame:
+        frame = random.randint(0, 100)
+        bpy.context.scene.frame_set(frame)
     
     # Random texture
     texImage.image = bpy.data.images.load(random.choice(texture_files))
@@ -151,7 +162,7 @@ for i in range(n_renders):
 
     # Compute direction vector from camera to origin
     print(bbox_center_global)
-    direction = bbox_center_global- mathutils.Vector((x, y, z))
+    direction = bbox_center_global - mathutils.Vector((x, y, z))
 
     # Compute the rotation matrix to align the -Z axis with the direction vector
     rot_matrix = direction.to_track_quat('-Z', 'Y').to_matrix().to_4x4()
@@ -160,7 +171,10 @@ for i in range(n_renders):
     camera.matrix_world = rot_matrix
     
     # Set the camera position
-    camera.location = (x, y, z)
+    camera.matrix_world.translation = mathutils.Vector((x, y, z))
+
+    # Set the FOV
+    camera.data.angle = math.radians(fov)
 
     # Set the output file path
     bpy.context.scene.render.filepath = os.path.join(out_dir, f'render_{i:06d}.png')
