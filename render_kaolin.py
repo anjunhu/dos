@@ -23,10 +23,6 @@ def render(obj_path, camera_matrix_path, out_img_path):
 
     face_uvs = kal.ops.mesh.index_vertices_by_faces(uvs, face_uvs_idx).detach()
 
-    # texture_res = 128
-    # texture_map = torch.ones((1, 3, texture_res, texture_res), dtype=torch.float, device='cuda',
-    #                          requires_grad=True)
-    
     texture_map = mesh.materials[0]['map_Kd'].float().to('cuda').permute(2, 0, 1)[None] / 255
 
     ### Prepare mesh data with projection regarding to camera ###
@@ -38,12 +34,6 @@ def render(obj_path, camera_matrix_path, out_img_path):
 
     camera_matrix = np.loadtxt(camera_matrix_path)
     camera_matrix = torch.from_numpy(camera_matrix).float().to('cuda')
-    # camera_matrix.inverse()
-
-    camera_position = torch.tensor([[2.732, 0, 0]], dtype=torch.float32, device='cuda')
-    look_at = torch.tensor([[0, 0, 0]], dtype=torch.float32, device='cuda')
-    camera_up_direction = torch.tensor([[0, 1, 0]], dtype=torch.float32, device='cuda')
-    camera_transform = kal.render.camera.generate_transformation_matrix(camera_position, look_at, camera_up_direction)
 
     # Convert the camera matrix from Blender to OpenGL coordinate system
     conversion_mat = torch.Tensor([[1, 0, 0, 0],
@@ -55,22 +45,6 @@ def render(obj_path, camera_matrix_path, out_img_path):
     # Convert the camera matrix to view matrix
     view_matrix = camera_matrix.inverse()[:3]
 
-    # # Column major
-    # padded_vertices = torch.nn.functional.pad(
-    #     vertices, (0, 1), mode='constant', value=1.
-    # )
-    # Project the vertices on the camera image plan
-    # padded_vertices_T = padded_vertices.permute(0, 2, 1)
-    # vertices_camera = view_matrix @ padded_vertices_T
-    # vertices_camera = vertices_camera.permute(0, 2, 1)
-
-    # # Project the vertices on the camera image plan
-    # vertices_image = kal.render.camera.perspective_camera(vertices_camera, cam_proj)
-    # face_vertices_camera = kal.ops.mesh.index_vertices_by_faces(vertices_camera, faces)
-    # face_vertices_image = kal.ops.mesh.index_vertices_by_faces(vertices_image, faces)
-    # face_normals = kal.ops.mesh.face_normals(face_vertices_camera, unit=True)
-
-    # Row major
     # Blender is column major, but kaolin is row major
     view_matrix = view_matrix.T
 
@@ -89,7 +63,6 @@ def render(obj_path, camera_matrix_path, out_img_path):
         face_uvs.repeat(batch_size, 1, 1, 1),
         torch.ones((batch_size, nb_faces, 3, 1), device='cuda')
     ]
-    # face_attributes = torch.ones((batch_size, nb_faces, 3, 3), device='cuda')
 
     # If you have nvdiffrast installed you can change rast_backend to
     # nvdiffrast or nvdiffrast_fwd
