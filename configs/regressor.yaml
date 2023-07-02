@@ -1,0 +1,40 @@
+_target_: regressor.trainer.Trainer
+
+train_dataset:
+  _target_: regressor.datasets.ImageDataset
+  root_dir: /scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v1-static/train
+  attributes:
+    - name: image
+      suffix: _render.png
+    - name: mask
+      suffix: _mask.png
+    - name: camera_matrix
+      suffix: _camera.txt
+
+# val_dataset:
+#   _target_: regressor.datasets.ImageDataset
+#   root_dir: /scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v1-static/val
+#   attributes:
+#     - name: image
+#       suffix: _render.png
+#     - name: mask
+#       suffix: _mask.png
+#     - name: camera_matrix
+#       suffix: _camera.txt
+
+val_dataset:
+  _target_: regressor.datasets.ImageDataset
+  root_dir: /tmp/other_horse_dino_v3/test/pascal_good
+  attributes:
+    - name: image
+      suffix: _rgb.jpg
+    - name: mask
+      suffix: _mask.png
+
+model:
+  _target_: regressor.models.CameraRegressor
+
+device: cuda:0
+num_iterations: 1000
+
+
