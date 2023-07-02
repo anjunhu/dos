@@ -7,7 +7,6 @@ import mathutils
 import glob
 
 # Constants
-RADIUS = 5  # Radius of the sphere
 UP = (0, 0, 1)  # Up direction
 
 
@@ -17,6 +16,7 @@ out_dir = "/scratch/local/hdd/tomj/datasets/synth_animals/renders/v1-debug"
 n_renders = 10
 random_frame = False
 fov = 50
+radius_range = (2.5, 4.5)
 
 
 def clean_up_scene():
@@ -101,6 +101,9 @@ material.node_tree.links.new(bsdf.inputs["Base Color"], texImage.outputs["Color"
 
 bpy.data.lights["Light"].energy = 1200
 
+# Enable 'Use Nodes' in world settings
+bpy.context.scene.world.use_nodes = True
+
 # Add a camera
 bpy.ops.object.camera_add(location=(0, -3, 0))
 camera = bpy.context.object
@@ -112,6 +115,19 @@ random.seed(0)
 
 # Render from n different random views
 for i in range(n_renders):
+    # Set background color and strength to default
+    bpy.context.scene.world.node_tree.nodes["Background"].inputs[
+        "Color"
+    ].default_value = (
+        0.05,
+        0.05,
+        0.05,
+        1,
+    )  # default gray color
+    bpy.context.scene.world.node_tree.nodes["Background"].inputs[
+        "Strength"
+    ].default_value = 1.0  # default strength
+
     # Random light
 
     # Clear all lights
@@ -152,12 +168,13 @@ for i in range(n_renders):
     # Randomly sample spherical coordinates in top half sphere and convert to cartesian
     theta = 2 * math.pi * random.random()  # Random angle around z-axis
     phi = math.acos(
-        1 - random.random()
+        0.8 - random.random()
     )  # Random angle from positive z-axis (top half sphere)
 
-    x = RADIUS * math.sin(phi) * math.cos(theta)
-    y = RADIUS * math.sin(phi) * math.sin(theta)
-    z = RADIUS * math.cos(phi)
+    radius = random.uniform(*radius_range)  # Random radius
+    x = radius * math.sin(phi) * math.cos(theta)
+    y = radius * math.sin(phi) * math.sin(theta)
+    z = radius * math.cos(phi)
 
     # Get the bounding box center (object's local coordinates)
     bbox_center_local = (
@@ -183,10 +200,71 @@ for i in range(n_renders):
     camera.data.angle = math.radians(fov)
 
     # Set the output file path
-    bpy.context.scene.render.filepath = os.path.join(out_dir, f"render_{i:06d}.png")
+    bpy.context.scene.render.filepath = os.path.join(out_dir, f"{i:06d}_render.png")
 
     # Render the scene
     bpy.ops.render.render(write_still=True)
+
+    mask_path = os.path.join(out_dir, f"{i:06d}_mask.png")
+
+    # Create new material for segmentation
+    bpy.data.materials.new(name="Segmentation")
+    segmentation_material = bpy.data.materials["Segmentation"]
+    segmentation_material.use_nodes = True
+    nodes = segmentation_material.node_tree.nodes
+
+    # Clear all nodes
+    for node in nodes:
+        nodes.remove(node)
+
+    # Create new emission shader node
+    emission_shader_node = nodes.new(type="ShaderNodeEmission")
+    emission_shader_node.inputs[0].default_value = (
+        1,
+        1,
+        1,
+        1,
+    )  # Set the color to white
+
+    # Create new material output node
+    material_output_node = nodes.new(type="ShaderNodeOutputMaterial")
+
+    # Connect nodes
+    segmentation_material.node_tree.links.new(
+        emission_shader_node.outputs[0], material_output_node.inputs[0]
+    )
+
+    # Store the old active material
+    # active_material = bpy.context.object.active_material
+    # Select mesh
+    mesh = None
+    for child in object.children:
+        if child.type == "MESH":
+            mesh = child
+            break
+    active_material = mesh.data.materials[0]
+
+    # Set the new material to the active object
+    # bpy.context.object.active_material = segmentation_material
+    mesh.data.materials[0] = segmentation_material
+
+    # Set background color to black
+    bpy.context.scene.world.node_tree.nodes["Background"].inputs[
+        "Color"
+    ].default_value = (
+        0,
+        0,
+        0,
+        1,
+    )
+
+    # Render segmentation mask
+    bpy.context.scene.render.filepath = os.path.join(out_dir, f"{i:06d}_mask.png")
+    bpy.ops.render.render(write_still=True)
+
+    # Restore the original material
+    # bpy.context.object.active_material = active_material
+    mesh.data.materials[0] = active_material
 
     # Get the camera matrix
     camera_matrix = camera.matrix_world
@@ -195,7 +273,7 @@ for i in range(n_renders):
     camera_matrix_array = np.array(camera_matrix)
 
     # Define the file path for saving the camera matrix
-    file_path = os.path.join(out_dir, f"camera_{i:06d}.txt")
+    file_path = os.path.join(out_dir, f"{i:06d}_camera.txt")
 
     # Save the camera matrix as a text file
     np.savetxt(file_path, camera_matrix_array, fmt="%f", delimiter=" ")
