@@ -1,21 +1,25 @@
-import torch
-
-
-from PIL import Image
-import torch
-import numpy as np
+import math
 
 import kaolin as kal
-import math
-import torch
 import kornia
+import numpy as np
+import torch
+import torchvision
+from PIL import Image
 
 
-def tensor_to_image(tensor, no_permute=False):
+def tensor_to_image(tensor, chw=True):
     """
     Convert a tensor to a PIL image
     """
-    if not no_permute:
+    if len(tensor.shape) == 4:
+        if not chw:
+            tensor = tensor.permute(0, 3, 1, 2)
+            chw = True
+        tensor = torchvision.utils.make_grid(
+            tensor, nrow=int(math.sqrt(tensor.shape[0]))
+        )
+    if chw:
         tensor = tensor.permute(1, 2, 0)
     return Image.fromarray((tensor * 255).detach().cpu().numpy().astype(np.uint8))
 
@@ -101,14 +105,14 @@ class MeshRenderer(object):
             mesh[k] for k in ["vertices", "faces", "face_uvs", "texture_map"]
         )
 
-        batch_size = 1
+        batch_size = view_matrix.shape[0]
 
         cam_proj = kal.render.camera.generate_perspective_projection(
             math.radians(fov), ratio=1.0, dtype=torch.float32
         ).to(self.device)
 
         # opengl is column major, but kaolin is row major
-        view_matrix = view_matrix[:3].T
+        view_matrix = view_matrix[:, :3].permute(0, 2, 1)
 
         (
             face_vertices_camera,

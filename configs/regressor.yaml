@@ -24,7 +24,7 @@ train_dataset:
 
 val_dataset:
   _target_: regressor.datasets.ImageDataset
-  root_dir: /tmp/other_horse_dino_v3/test/pascal_good
+  root_dir: /scratch/shared/beegfs/tomj/datasets/horses/other_horse_dino_v3/test/pascal_good
   attributes:
     - name: image
       suffix: _rgb.jpg

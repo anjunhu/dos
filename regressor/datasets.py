@@ -15,7 +15,7 @@ class ImageDataset(Dataset):
     suffix is the end of the file name '*{suffix}'
     """
 
-    def __init__(self, root_dir, attributes, image_size=256):
+    def __init__(self, root_dir, attributes, image_size=256, mask_threshold=0.1):
         """ """
         self.root_dir = root_dir
         self.attributes = attributes
@@ -35,6 +35,7 @@ class ImageDataset(Dataset):
                 [
                     transforms.Resize(image_size, interpolation=Image.NEAREST),
                     transforms.ToTensor(),
+                    lambda x: (x > mask_threshold).float(),
                 ]
             ),
         }

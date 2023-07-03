@@ -52,6 +52,7 @@ class CameraRegressor(torch.nn.Module):
         images = batch["image"]
         masks = batch["mask"]
         images = images * masks
+        # TODO: investigate the effect of the trainable encoder inside the ViT
         (
             feat_out,
             feat_key,
@@ -59,6 +60,6 @@ class CameraRegressor(torch.nn.Module):
             patch_key,
             patch_key_dino,
         ) = self.forward_encoder(images)
-
         rotation, translation = self.forward_pose(patch_key)
-        return rotation, translation
+        aux_out = {"patch_key_dino": patch_key_dino}
+        return rotation, translation, aux_out

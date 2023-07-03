@@ -25,9 +25,35 @@ from torch import nn
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from typing import Optional
-from PIL import Image
+import faiss
+import numpy as np
 
 from . import utils
+
+
+def dino_features_to_image(
+    patch_key, dino_pca_mat, h=256, w=256, dino_feature_recon_dim=3
+):
+    dino_feat_im = patch_key.reshape(-1, patch_key.shape[-1]).cpu().numpy()
+    dims = dino_feat_im.shape[:-1]
+    dino_feat_im = dino_feat_im / np.linalg.norm(dino_feat_im, axis=1, keepdims=True)
+    dino_feat_im = (
+        torch.from_numpy(dino_pca_mat.apply_py(dino_feat_im))
+        .to(patch_key.device)
+        .reshape(*dims, -1)
+    )
+    dino_feat_im = (
+        dino_feat_im.reshape(-1, 32, 32, dino_feat_im.shape[-1])
+        .permute(0, 3, 1, 2)
+        .clip(-1, 1)
+        * 0.5
+        + 0.5
+    )
+    # TODO: is it needed?
+    dino_feat_im = torch.nn.functional.interpolate(
+        dino_feat_im, size=[h, w], mode="bilinear"
+    )[:, :dino_feature_recon_dim]
+    return dino_feat_im
 
 
 def rotation_loss(rotation_pred, rotation_gt):
@@ -69,11 +95,15 @@ class Trainer:
     )
     neptune_project: str = "tomj/camera-regressor"
     neptune_api_token: str = "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI2Y2MwOTJmNS01NmRlLTRjNmItYWNkYi05NmZmMGY4NzA4N2MifQ=="
+    # TODO: move somewhere else
+    dino_feat_pca_path: str = "/work/tomj/dove/dino/horses-12c-4s-5k_rnd-cos-gt_mask-pca16-2-pad2-nfix/pca.faiss"
 
     def __post_init__(self):
         self.train_dataset = InfiniteDataset(self.train_dataset)
         self.val_dataset = self.val_dataset
         self.model = self.model.to(self.device)
+        # TODO: move somewhere else
+        self.dino_pca_mat = faiss.read_VectorTransform(self.dino_feat_pca_path)
 
     def forward(
         self,
@@ -87,7 +117,7 @@ class Trainer:
     ):
         # TODO: where it should actually be done
         batch = {k: v.to(self.device) for k, v in batch.items()}
-        rotation, translation = self.model(batch)
+        rotation, translation, forward_aux = self.model(batch)
 
         if "camera_matrix" in batch:
             # TODO: where it should actually be computed?
@@ -110,29 +140,38 @@ class Trainer:
             loss = 0
 
         if visualize:
-            for i in range(min(n_visuals, len(batch["image"]))):
-                neptune_run[log_prefix + "/input_image"].append(
-                    utils.tensor_to_image(batch["image"][i]), step=iteration
-                )
-                mesh_renderer = utils.MeshRenderer(
-                    obj_path=self.test_obj_path, device=self.device
-                )
-                # render the predicted camera pose
-                view_matrix = utils.rotation_translation_to_matrix(
-                    rotation, translation
-                )
-                rendered_view_pred = mesh_renderer.render(view_matrix[i])
-                neptune_run[log_prefix + "/rendered_view_pred"].append(
-                    utils.tensor_to_image(rendered_view_pred[0], no_permute=True),
+            n_visuals = min(n_visuals, len(batch["image"]))
+            neptune_run[log_prefix + "/input_image"].append(
+                utils.tensor_to_image(batch["image"][:n_visuals]), step=iteration
+            )
+            neptune_run[log_prefix + "/input_mask"].append(
+                utils.tensor_to_image(batch["mask"][:n_visuals]), step=iteration
+            )
+            neptune_run[log_prefix + "/input_dino"].append(
+                utils.tensor_to_image(
+                    dino_features_to_image(
+                        forward_aux["patch_key_dino"][:n_visuals], self.dino_pca_mat
+                    )
+                ),
+                step=iteration,
+            )
+            mesh_renderer = utils.MeshRenderer(
+                obj_path=self.test_obj_path, device=self.device
+            )
+            # render the predicted camera pose
+            view_matrix = utils.rotation_translation_to_matrix(rotation, translation)
+            rendered_view_pred = mesh_renderer.render(view_matrix[:n_visuals])
+            neptune_run[log_prefix + "/rendered_view_pred"].append(
+                utils.tensor_to_image(rendered_view_pred[:n_visuals], chw=False),
+                step=iteration,
+            )
+            if "camera_matrix" in batch:
+                # render the ground truth camera pose
+                rendered_view_gt = mesh_renderer.render(view_matrix_gt[:n_visuals])
+                neptune_run[log_prefix + "/rendered_view_gt"].append(
+                    utils.tensor_to_image(rendered_view_gt, chw=False),
                     step=iteration,
                 )
-                if "camera_matrix" in batch:
-                    # render the ground truth camera pose
-                    rendered_view_gt = mesh_renderer.render(view_matrix_gt[i])
-                    neptune_run[log_prefix + "/rendered_view_gt"].append(
-                        utils.tensor_to_image(rendered_view_gt[0], no_permute=True),
-                        step=iteration,
-                    )
 
         return loss
 
@@ -214,7 +253,7 @@ class Trainer:
                 neptune_run["train/loss"].append(value=loss.item(), step=iteration)
 
             # Evaluate the model
-            if iteration % self.num_eval_iterations == 0 and iteration > 0:
+            if iteration % self.num_eval_iterations == 0:
                 self.model.eval()
                 self.evaluate(iteration, neptune_run)
                 self.model.train()
