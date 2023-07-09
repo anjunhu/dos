@@ -17,16 +17,18 @@ classes:
 
 Intantiate with hydra, use neptune.ai for logging.
 """
+import warnings
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
 
+import faiss
 import neptune
+import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from typing import Optional
-import faiss
-import numpy as np
 
 from . import utils
 
@@ -87,9 +89,17 @@ class Trainer:
     num_eval_iterations: int = 100
     num_vis_iterations: int = 50
     num_log_iterations: int = 10
+    evaluate_n_visuals: int = 10
+    save_checkpoint_freq: int = 200
     device: str = "cuda"
     translation_loss_weight: float = 1.0
     rotation_loss_weight: float = 1.0
+    checkpoint_dir: Optional[str] = None
+    checkpoint_path: Optional[str] = None
+    checkpoint_name: Optional[str] = None
+    shuffle_val: bool = False
+    resume: bool = False
+    resume_with_latest: bool = False
     test_obj_path: str = (
         "data_generation/examples/data/horse_009_arabian_galgoPosesV1.obj"
     )
@@ -104,6 +114,69 @@ class Trainer:
         self.model = self.model.to(self.device)
         # TODO: move somewhere else
         self.dino_pca_mat = faiss.read_VectorTransform(self.dino_feat_pca_path)
+
+    def load_checkpoint(self, optim=True):
+        """Search the specified/latest checkpoint in checkpoint_dir and load the model and optimizer."""
+        if optim:
+            warnings.warn("Loading optimizer state is not implemented yet.")
+
+        def get_latest_checkpoint():
+            if self.checkpoint_dir is None:
+                return None
+            checkpoints = sorted(Path(self.checkpoint_dir).glob("*.pth"))
+            if len(checkpoints) == 0:
+                return None
+            return checkpoints[-1]
+
+        latest_checkpoint = get_latest_checkpoint()
+
+        if self.checkpoint_path is not None:
+            checkpoint_path = self.checkpoint_path
+        elif self.checkpoint_name is not None:
+            checkpoint_path = Path(self.checkpoint_dir) / self.checkpoint_name
+        else:
+            checkpoint_path = latest_checkpoint
+
+        if self.resume_with_latest and latest_checkpoint is not None:
+            checkpoint_path = latest_checkpoint
+
+        if checkpoint_path is None:
+            return 0
+
+        self.checkpoint_name = Path(checkpoint_path).name
+
+        print(f"Loading checkpoint from {checkpoint_path}")
+        cp = torch.load(checkpoint_path, map_location=self.device)
+        self.model.load_state_dict(cp["model"])
+        # TODO: implement
+        # if optim:
+        #     self.model.load_optimizer_state(cp)
+        # self.metrics_trace = cp["metrics_trace"]
+        total_iter = cp["total_iter"]
+        return total_iter
+
+    def save_checkpoint(self, total_iter, optim=True):
+        # TODO: update docstring
+        """Save model, optimizer, and metrics state to a checkpoint in checkpoint_dir for the specified epoch."""
+        Path(self.checkpoint_dir).mkdir(parents=True, exist_ok=True)
+        checkpoint_name = f"checkpoint-{total_iter:07}.pth"
+        checkpoint_path = Path(self.checkpoint_dir) / checkpoint_name
+        state_dict = {}
+        state_dict["model"] = self.model.state_dict()
+        # TODO: implement
+        # if optim:
+        #     optimizer_state = self.model.get_optimizer_state()
+        #     state_dict = {**state_dict, **optimizer_state}
+        # TODO: implement
+        # state_dict["metrics_trace"] = self.metrics_trace
+        state_dict["total_iter"] = total_iter
+        print(f"Saving checkpoint to {checkpoint_path}")
+        torch.save(state_dict, checkpoint_path)
+        # TODO: implement
+        # if self.keep_num_checkpoint > 0:
+        #     misc.clean_checkpoint(
+        #         self.checkpoint_dir, keep_num=self.keep_num_checkpoint
+        #     )
 
     def forward(
         self,
@@ -181,7 +254,7 @@ class Trainer:
         val_loader = torch.utils.data.DataLoader(
             self.val_dataset,
             batch_size=val_batch_size,
-            shuffle=False,
+            shuffle=self.shuffle_val,
             num_workers=self.num_workers,
             pin_memory=True,
         )
@@ -189,7 +262,7 @@ class Trainer:
         total_loss = 0
         num_batches = 0
 
-        for i, batch in tqdm(enumerate(val_loader)):
+        for i, batch in tqdm(enumerate(val_loader), total=len(val_loader)):
             if i == 0:
                 visualize = True
             else:
@@ -200,7 +273,7 @@ class Trainer:
                 log_prefix="val",
                 visualize=visualize,
                 iteration=iteration,
-                n_visuals=10,
+                n_visuals=self.evaluate_n_visuals,
             )
             total_loss += loss
             num_batches += 1
@@ -227,10 +300,20 @@ class Trainer:
         # Define optimizer
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
+        start_total_iter = 0
+        # resume from checkpoint
+        if self.resume:
+            start_total_iter = self.load_checkpoint(optim=True)
+
         self.model.train()
 
         # Training loop
-        for iteration, batch in enumerate(train_loader):
+        for run_iteration, batch in enumerate(train_loader):
+            iteration = start_total_iter + run_iteration
+
+            if iteration % self.save_checkpoint_freq == 0:
+                self.save_checkpoint(iteration, optim=True)
+
             if iteration > self.num_iterations:
                 break
 
