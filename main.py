@@ -8,4 +8,5 @@ if __name__ == "__main__":
     config_path = sys.argv[1]
     config = OmegaConf.load(config_path)
     trainer = instantiate(config)
-    trainer.train()
+    config_dict = OmegaConf.to_container(config, resolve=True)
+    trainer.train(config=config_dict)

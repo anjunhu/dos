@@ -282,12 +282,17 @@ class Trainer:
         avg_loss = total_loss / num_batches
         neptune_run["val/loss"].append(value=avg_loss, step=iteration)
 
-    def train(self):
+    def train(self, config=None):
+        """
+        config: dict TODO: config for logging, might be better to move it to elsewhere
+        """
         # Initialize Neptune logger
         neptune_run = neptune.init_run(
             project=self.neptune_project,
             api_token=self.neptune_api_token,
         )  # your credentials
+        if config is not None:
+            neptune_run["parameters"] = config
 
         train_loader = torch.utils.data.DataLoader(
             self.train_dataset,
