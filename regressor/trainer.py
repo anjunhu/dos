@@ -316,7 +316,7 @@ class Trainer:
         for run_iteration, batch in enumerate(train_loader):
             iteration = start_total_iter + run_iteration
 
-            if iteration % self.save_checkpoint_freq == 0:
+            if iteration % self.save_checkpoint_freq == 0 and iteration > 0:
                 self.save_checkpoint(iteration, optim=True)
 
             if iteration > self.num_iterations:
