@@ -13,13 +13,14 @@ UP = (0, 0, 1)  # Up direction
 file_path = "/scratch/local/hdd/tomj/datasets/synth_animals/data/DOC/3dModels/horse/02_released/horse_009_arabian_galgoPosesV1.glb"
 texture_path = "/scratch/local/hdd/tomj/datasets/synth_animals/data/DOC/maps/frankensteinDiffuses_v001/diffuse_horse_*.jpg"
 # out_dir = "/scratch/local/hdd/tomj/datasets/synth_animals/renders/v1-debug"
-out_dir = "/scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v2/train"
-n_offset = 500
-n_renders = 10000
+# out_dir = "/scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v2/train"
+out_dir = "/scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v2/val"
+n_offset = 0
+n_renders = 200
 random_frame = True
 fov = 50
 radius_range = (2.5, 4.5)
-seed = 1
+seed = 2
 
 
 def clean_up_scene():
