@@ -19,6 +19,7 @@ def get_activation(name, inplace=True, lrelu_param=0.2):
 class Encoder32(nn.Module):
     def __init__(self, cin, cout, nf=256, activation=None):
         super().__init__()
+        # TODO: why no bias?
         network = [
             nn.Conv2d(
                 cin, nf, kernel_size=4, stride=2, padding=1, bias=False
