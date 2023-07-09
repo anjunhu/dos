@@ -1,0 +1,70 @@
+_target_: regressor.trainer.Trainer
+
+train_dataset:
+  _target_: regressor.datasets.ImageDataset
+  # root_dir: /scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v1-static/train
+  root_dir: /scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v2/train
+  attributes:
+    - name: image
+      suffix: _render.png
+    - name: mask
+      suffix: _mask.png
+    - name: camera_matrix
+      suffix: _camera.txt
+
+val_dataset:
+  _target_: regressor.datasets.ImageDataset
+  root_dir: /scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v2/val
+  attributes:
+    - name: image
+      suffix: _render.png
+    - name: mask
+      suffix: _mask.png
+    - name: camera_matrix
+      suffix: _camera.txt
+
+# val_dataset:
+#   _target_: regressor.datasets.ImageDataset
+#   root_dir: /scratch/shared/beegfs/tomj/datasets/horses/other_horse_dino_v3/test/pascal_good
+#   attributes:
+#     - name: image
+#       suffix: _rgb.jpg
+#     - name: mask
+#       suffix: _mask.png
+
+# val_dataset:
+#   _target_: regressor.datasets.ImageDataset
+#   root_dir: /scratch/shared/beegfs/tomj/datasets/horses/other_horse_dino_v3/test/pascal_good
+#   attributes:
+#     - name: image
+#       suffix: _rgb.jpg
+#     - name: mask
+#       suffix: _mask.png
+
+
+model:
+  _target_: regressor.models.CameraRegressor
+  encoder:
+    _target_: regressor.networks.vit.ViTEncoder
+    model_type: dinov2_vits14
+    stride: 7
+    facet: token
+    layer: 11
+    image_size: 224
+
+dino_feat_pca_path: /work/tomj/dove/dino/horses-baseline-dino_v2/pca.faiss
+
+# checkpoint_dir: /scratch/shared/beegfs/tomj/synth_animals/regressor/logs/regressor-v2
+checkpoint_dir: /tmp/logs/regressor-v2-dinov2
+device: cuda:0
+
+num_iterations: 10000
+# resume: True
+
+learning_rate: 1e-4
+
+# for debugging
+# num_iterations: 40
+# num_vis_iterations: 10
+# num_eval_iterations: 10
+# save_checkpoint_freq: 10
