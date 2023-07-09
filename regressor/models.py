@@ -4,30 +4,19 @@ from .networks.vit import ViTEncoder
 
 
 class CameraRegressor(torch.nn.Module):
-    # TODO: abstract away the encoder and its parameters
     def __init__(
         self,
-        vit_name="dino_vits8",
-        vit_final_layer_type="conv",
-        encoder_latent_dim=256,
-        encoder_pretrained=True,
-        encoder_frozen=True,
-        in_image_size=256,
+        encoder=ViTEncoder(),
     ):
         super().__init__()
-        self.netEncoder = ViTEncoder(
-            cout=encoder_latent_dim,
-            which_vit=vit_name,
-            pretrained=encoder_pretrained,
-            frozen=encoder_frozen,
-            in_size=in_image_size,
-            final_layer_type=vit_final_layer_type,
-        )
+        self.netEncoder = encoder
         pose_cout = 7  # 4 for rotation, 3 for translation
-        if vit_name == "dino_vits8":
+        if "vits" in self.netEncoder.model_type:
             dino_feat_dim = 384
-        elif vit_name == "dino_vitb8":
+        elif "vitb" in self.netEncoder.model_type:
             dino_feat_dim = 768
+        else:
+            raise NotImplementedError()
         self.netPose = Encoder32(
             cin=dino_feat_dim, cout=pose_cout, nf=256, activation=None
         )
@@ -42,25 +31,24 @@ class CameraRegressor(torch.nn.Module):
         translation = pose[:, 4:]
         return rotation, translation
 
-    def forward_encoder(self, images):
-        images_in = images * 2 - 1  # Rescale to (-1, 1)
-        feat_out, feat_key, patch_out, patch_key, patch_key_dino = self.netEncoder(
-            images_in, return_patches=True
-        )
-        return feat_out, feat_key, patch_out, patch_key, patch_key_dino
-
     def forward(self, batch):
         images = batch["image"]
         masks = batch["mask"]
         images = images * masks
-        # TODO: investigate the effect of the trainable encoder inside the ViT
-        (
-            feat_out,
-            feat_key,
-            patch_out,
-            patch_key,
-            patch_key_dino,
-        ) = self.forward_encoder(images)
+        patch_key = self.netEncoder(images)
+        # patch_key torch.Size([B, 384, 32, 32])
+        # resize to 32 (for DINO v2) TODO: find a better way to do this
+        if patch_key.shape[-1] != 32:
+            assert patch_key.shape[-1] == patch_key.shape[-2]
+            patch_key = torch.nn.functional.interpolate(
+                patch_key, size=(32, 32), mode="bilinear", align_corners=False
+            )
         rotation, translation = self.forward_pose(patch_key)
+        # TODO: see if we really need to output the patch_key_dino
+        patch_key_dino = patch_key.permute(0, 2, 3, 1)
+        patch_key_dino = patch_key_dino.reshape(
+            patch_key_dino.shape[0], 1, -1, patch_key_dino.shape[-1]
+        )
+        # patch_key_dino torch.Size([B, 1, 1024, 384])
         aux_out = {"patch_key_dino": patch_key_dino}
         return rotation, translation, aux_out
