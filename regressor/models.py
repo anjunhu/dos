@@ -1,5 +1,6 @@
 import torch
-from . import networks
+from .networks.misc import Encoder32
+from .networks.vit import ViTEncoder
 
 
 class CameraRegressor(torch.nn.Module):
@@ -14,7 +15,7 @@ class CameraRegressor(torch.nn.Module):
         in_image_size=256,
     ):
         super().__init__()
-        self.netEncoder = networks.ViTEncoder(
+        self.netEncoder = ViTEncoder(
             cout=encoder_latent_dim,
             which_vit=vit_name,
             pretrained=encoder_pretrained,
@@ -27,7 +28,7 @@ class CameraRegressor(torch.nn.Module):
             dino_feat_dim = 384
         elif vit_name == "dino_vitb8":
             dino_feat_dim = 768
-        self.netPose = networks.Encoder32(
+        self.netPose = Encoder32(
             cin=dino_feat_dim, cout=pose_cout, nf=256, activation=None
         )
 
