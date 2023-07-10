@@ -94,6 +94,8 @@ class Trainer:
     device: str = "cuda"
     translation_loss_weight: float = 1.0
     rotation_loss_weight: float = 1.0
+    experiment_name: Optional[str] = None
+    checkpoint_root_dir: Optional[str] = None
     checkpoint_dir: Optional[str] = None
     checkpoint_path: Optional[str] = None
     checkpoint_name: Optional[str] = None
@@ -114,6 +116,22 @@ class Trainer:
         self.model = self.model.to(self.device)
         # TODO: move somewhere else
         self.dino_pca_mat = faiss.read_VectorTransform(self.dino_feat_pca_path)
+
+        # either both experiment_name and checkpoint_root_dir or only checkpoint_dir should be specified
+        if self.checkpoint_dir is not None:
+            assert (
+                self.experiment_name is None and self.checkpoint_root_dir is None
+            ), "Either both experiment_name and checkpoint_root_dir or only checkpoint_dir should be specified."
+            self.checkpoint_dir = Path(self.checkpoint_dir)
+            self.experiment_name = self.checkpoint_dir.name
+            self.checkpoint_root_dir = self.checkpoint_dir.parent
+        else:
+            assert (
+                self.experiment_name is not None
+                and self.checkpoint_root_dir is not None
+            ), "Either both experiment_name and checkpoint_root_dir or only checkpoint_dir should be specified."
+            self.checkpoint_root_dir = Path(self.checkpoint_root_dir)
+            self.checkpoint_dir = self.checkpoint_root_dir / self.experiment_name
 
     def load_checkpoint(self, optim=True):
         """Search the specified/latest checkpoint in checkpoint_dir and load the model and optimizer."""

@@ -54,12 +54,13 @@ model:
 
 dino_feat_pca_path: /work/tomj/dove/dino/horses-baseline-dino_v2/pca.faiss
 
-# checkpoint_dir: /scratch/shared/beegfs/tomj/synth_animals/regressor/logs/regressor-v2
-checkpoint_dir: /tmp/logs/regressor-v2-dinov2
+checkpoint_root_dir: /scratch/shared/beegfs/tomj/synth_animals/regressor/logs
+experiment_name: regressor-v2-dinov2
+
 device: cuda:0
 
 num_iterations: 10000
-# resume: True
+resume: True
 
 learning_rate: 1e-4
 
