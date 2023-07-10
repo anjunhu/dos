@@ -312,6 +312,10 @@ class Trainer:
         """
         config: dict TODO: config for logging, might be better to move it to elsewhere
         """
+        # set random seed
+        torch.manual_seed(0)
+        np.random.seed(0)
+
         # Initialize Neptune logger
         neptune_run = neptune.init_run(
             project=self.neptune_project,
