@@ -100,6 +100,7 @@ class Trainer:
     checkpoint_path: Optional[str] = None
     checkpoint_name: Optional[str] = None
     shuffle_val: bool = False
+    test_only: bool = False
     resume: bool = False
     resume_with_latest: bool = False
     test_obj_path: str = (
@@ -327,6 +328,14 @@ class Trainer:
         # resume from checkpoint
         if self.resume:
             start_total_iter = self.load_checkpoint(optim=True)
+
+        # TODO: consider better way to do this
+        if self.test_only:
+            self.model.eval()
+            iteration = start_total_iter
+            self.evaluate(iteration, neptune_run)
+            self.model.train()
+            return
 
         self.model.train()
 

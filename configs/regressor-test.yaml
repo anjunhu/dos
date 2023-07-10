@@ -1,28 +1,5 @@
 _target_: regressor.trainer.Trainer
 
-train_dataset:
-  _target_: regressor.datasets.ImageDataset
-  # root_dir: /scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v1-static/train
-  root_dir: /scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v2/train
-  attributes:
-    - name: image
-      suffix: _render.png
-    - name: mask
-      suffix: _mask.png
-    - name: camera_matrix
-      suffix: _camera.txt
-
-# val_dataset:
-#   _target_: regressor.datasets.ImageDataset
-#   root_dir: /scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v2/val
-#   attributes:
-#     - name: image
-#       suffix: _render.png
-#     - name: mask
-#       suffix: _mask.png
-#     - name: camera_matrix
-#       suffix: _camera.txt
-
 # val_dataset:
 #   _target_: regressor.datasets.ImageDataset
 #   root_dir: /scratch/shared/beegfs/tomj/datasets/horses/other_horse_dino_v3/test/pascal_good
@@ -34,28 +11,14 @@ train_dataset:
 
 val_dataset:
   _target_: regressor.datasets.ImageDataset
-  root_dir: /tmp/multi_horse_dino_v3/test
+  root_dir: /scratch/shared/beegfs/tomj/datasets/horses/multi_horse/clips_multi_horse/test
   attributes:
     - name: image
       suffix: _rgb.jpg
     - name: mask
       suffix: _mask.png
 
-
-model:
-  _target_: regressor.models.CameraRegressor
-
-checkpoint_path: /scratch/shared/beegfs/tomj/synth_animals/regressor/logs/regressor-v2/checkpoint-0003400.pth
-device: cuda:0
-
-num_iterations: 10000
+test_only: True
 resume: True
-save_checkpoint_freq: 1e10
 shuffle_val: True
 evaluate_n_visuals: 40
-
-# for debugging
-# num_iterations: 40
-# num_vis_iterations: 10
-# num_eval_iterations: 10
-# save_checkpoint_freq: 10
