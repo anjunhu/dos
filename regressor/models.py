@@ -7,8 +7,10 @@ class CameraRegressor(torch.nn.Module):
     def __init__(
         self,
         encoder=ViTEncoder(),
+        random_mask_occluder=None,  # TODO: is this the best place to put this?
     ):
         super().__init__()
+        self.random_mask_occluder = random_mask_occluder
         self.netEncoder = encoder
         pose_cout = 7  # 4 for rotation, 3 for translation
         if "vits" in self.netEncoder.model_type:
@@ -34,6 +36,12 @@ class CameraRegressor(torch.nn.Module):
     def forward(self, batch):
         images = batch["image"]
         masks = batch["mask"]
+        aux_out = {}
+        # TODO: is this the best place to put this? should there be another wrapper class for the model that does these things?
+        if self.random_mask_occluder is not None:
+            # randomly occlude the masks
+            masks = self.random_mask_occluder(masks)
+            aux_out.update({"masks_randomly_occluded": masks})
         images = images * masks
         patch_key = self.netEncoder(images)
         # patch_key torch.Size([B, 384, 32, 32])
@@ -50,5 +58,5 @@ class CameraRegressor(torch.nn.Module):
             patch_key_dino.shape[0], 1, -1, patch_key_dino.shape[-1]
         )
         # patch_key_dino torch.Size([B, 1, 1024, 384])
-        aux_out = {"patch_key_dino": patch_key_dino}
+        aux_out.update({"patch_key_dino": patch_key_dino})
         return rotation, translation, aux_out

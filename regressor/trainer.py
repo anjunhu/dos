@@ -239,6 +239,13 @@ class Trainer:
             neptune_run[log_prefix + "/input_mask"].append(
                 utils.tensor_to_image(batch["mask"][:n_visuals]), step=iteration
             )
+            if "masks_randomly_occluded" in forward_aux:
+                neptune_run[log_prefix + "/masks_randomly_occluded"].append(
+                    utils.tensor_to_image(
+                        forward_aux["masks_randomly_occluded"][:n_visuals]
+                    ),
+                    step=iteration,
+                )
             neptune_run[log_prefix + "/input_dino"].append(
                 utils.tensor_to_image(
                     dino_features_to_image(

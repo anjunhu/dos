@@ -1,4 +1,6 @@
 import math
+import random
+from dataclasses import dataclass
 
 import kaolin as kal
 import kornia
@@ -157,3 +159,41 @@ class MeshRenderer(object):
         image = torch.clamp(image * mask, 0.0, 1.0)
 
         return image
+
+
+@dataclass
+class RandomMaskOccluder(object):
+    num_occluders_range = (1, 6)
+    min_size = 0.1
+    max_size = 0.3
+
+    def __call__(self, masks):
+        # Get the input tensor shape
+        batch_size, _, height, width = masks.shape
+        masks = masks.clone()
+
+        # Iterate over images in the batch
+        # TODO: vectorize this
+        for i in range(batch_size):
+            num_occlusions = random.randint(*self.num_occluders_range)
+            # Create multiple occlusions per image
+            min_size = int(self.min_size * min(height, width))
+            max_size = int(self.max_size * min(height, width))
+            for _ in range(num_occlusions):
+                # Define occlusion size
+                occlusion_size_x = random.randint(min_size, max_size)
+                occlusion_size_y = random.randint(min_size, max_size)
+
+                # Define occlusion position
+                occlusion_x = random.randint(0, width - occlusion_size_x)
+                occlusion_y = random.randint(0, height - occlusion_size_y)
+
+                # Create occlusion on all channels
+                masks[
+                    i,
+                    :,
+                    occlusion_y : occlusion_y + occlusion_size_y,
+                    occlusion_x : occlusion_x + occlusion_size_x,
+                ] = 0
+
+        return masks
