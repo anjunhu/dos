@@ -1,24 +1,24 @@
 _target_: regressor.trainer.Trainer
 
-# val_dataset:
-#   _target_: regressor.datasets.ImageDataset
-#   root_dir: /scratch/shared/beegfs/tomj/datasets/horses/other_horse_dino_v3/test/pascal_good
-#   attributes:
-#     - name: image
-#       suffix: _rgb.jpg
-#     - name: mask
-#       suffix: _mask.png
-
 val_dataset:
   _target_: regressor.datasets.ImageDataset
-  root_dir: /scratch/shared/beegfs/tomj/datasets/horses/multi_horse/clips_multi_horse/test
+  root_dir: /scratch/shared/beegfs/tomj/datasets/horses/other_horse_dino_v3/train/pascal_good
   attributes:
     - name: image
       suffix: _rgb.jpg
     - name: mask
       suffix: _mask.png
 
+# val_dataset:
+#   _target_: regressor.datasets.ImageDataset
+#   root_dir: /scratch/shared/beegfs/tomj/datasets/horses/multi_horse/clips_multi_horse/test
+#   attributes:
+#     - name: image
+#       suffix: _rgb.jpg
+#     - name: mask
+#       suffix: _mask.png
+
 test_only: True
 resume: True
 shuffle_val: True
-evaluate_n_visuals: 40
+evaluate_num_visuals: 64

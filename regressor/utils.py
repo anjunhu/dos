@@ -26,6 +26,34 @@ def tensor_to_image(tensor, chw=True):
     return Image.fromarray((tensor * 255).detach().cpu().numpy().astype(np.uint8))
 
 
+def dino_features_to_image(
+    patch_key, dino_pca_mat, h=256, w=256, dino_feature_recon_dim=3
+):
+    """
+    Convert DINO features to an image
+    """
+    dino_feat_im = patch_key.reshape(-1, patch_key.shape[-1]).cpu().numpy()
+    dims = dino_feat_im.shape[:-1]
+    dino_feat_im = dino_feat_im / np.linalg.norm(dino_feat_im, axis=1, keepdims=True)
+    dino_feat_im = (
+        torch.from_numpy(dino_pca_mat.apply_py(dino_feat_im))
+        .to(patch_key.device)
+        .reshape(*dims, -1)
+    )
+    dino_feat_im = (
+        dino_feat_im.reshape(-1, 32, 32, dino_feat_im.shape[-1])
+        .permute(0, 3, 1, 2)
+        .clip(-1, 1)
+        * 0.5
+        + 0.5
+    )
+    # TODO: is it needed?
+    dino_feat_im = torch.nn.functional.interpolate(
+        dino_feat_im, size=[h, w], mode="bilinear"
+    )[:, :dino_feature_recon_dim]
+    return dino_feat_im
+
+
 def blender_to_opengl(matrix):
     """
     Convert the camera matrix from Blender to OpenGL coordinate system

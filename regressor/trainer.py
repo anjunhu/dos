@@ -22,47 +22,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-import faiss
 import neptune
 import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import Dataset
 from tqdm import tqdm
-
-from . import utils
-
-
-def dino_features_to_image(
-    patch_key, dino_pca_mat, h=256, w=256, dino_feature_recon_dim=3
-):
-    dino_feat_im = patch_key.reshape(-1, patch_key.shape[-1]).cpu().numpy()
-    dims = dino_feat_im.shape[:-1]
-    dino_feat_im = dino_feat_im / np.linalg.norm(dino_feat_im, axis=1, keepdims=True)
-    dino_feat_im = (
-        torch.from_numpy(dino_pca_mat.apply_py(dino_feat_im))
-        .to(patch_key.device)
-        .reshape(*dims, -1)
-    )
-    dino_feat_im = (
-        dino_feat_im.reshape(-1, 32, 32, dino_feat_im.shape[-1])
-        .permute(0, 3, 1, 2)
-        .clip(-1, 1)
-        * 0.5
-        + 0.5
-    )
-    # TODO: is it needed?
-    dino_feat_im = torch.nn.functional.interpolate(
-        dino_feat_im, size=[h, w], mode="bilinear"
-    )[:, :dino_feature_recon_dim]
-    return dino_feat_im
-
-
-def rotation_loss(rotation_pred, rotation_gt):
-    """
-    rotation_pred and rotation_gt are quaternions, shape: (B, 4)
-    """
-    return (1 - torch.abs(torch.sum(rotation_pred * rotation_gt, dim=1))).mean()
 
 
 class InfiniteDataset(torch.utils.data.Dataset):
@@ -89,7 +54,7 @@ class Trainer:
     num_eval_iterations: int = 100
     num_vis_iterations: int = 50
     num_log_iterations: int = 10
-    evaluate_n_visuals: int = 10
+    evaluate_num_visuals: int = 10
     save_checkpoint_freq: int = 200
     device: str = "cuda"
     translation_loss_weight: float = 1.0
@@ -103,20 +68,13 @@ class Trainer:
     test_only: bool = False
     resume: bool = False
     resume_with_latest: bool = False
-    test_obj_path: str = (
-        "data_generation/examples/data/horse_009_arabian_galgoPosesV1.obj"
-    )
     neptune_project: str = "tomj/camera-regressor"
     neptune_api_token: str = "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI2Y2MwOTJmNS01NmRlLTRjNmItYWNkYi05NmZmMGY4NzA4N2MifQ=="
-    # TODO: move somewhere else
-    dino_feat_pca_path: str = "/work/tomj/dove/dino/horses-12c-4s-5k_rnd-cos-gt_mask-pca16-2-pad2-nfix/pca.faiss"
 
     def __post_init__(self):
         self.train_dataset = InfiniteDataset(self.train_dataset)
         self.val_dataset = self.val_dataset
         self.model = self.model.to(self.device)
-        # TODO: move somewhere else
-        self.dino_pca_mat = faiss.read_VectorTransform(self.dino_feat_pca_path)
 
         # either both experiment_name and checkpoint_root_dir or only checkpoint_dir should be specified
         if self.checkpoint_dir is not None:
@@ -205,74 +163,28 @@ class Trainer:
         log=False,
         visualize=False,
         iteration=None,
-        n_visuals=1,
+        num_visuals=1,
     ):
         # TODO: where it should actually be done
-        batch = {k: v.to(self.device) for k, v in batch.items()}
-        rotation, translation, forward_aux = self.model(batch)
+        # non_blocking=True is needed for async data loading
+        batch = {k: v.to(self.device, non_blocking=True) for k, v in batch.items()}
 
-        if "camera_matrix" in batch:
-            # TODO: where it should actually be computed?
-            camera_matrix = batch["camera_matrix"]
-            # convert the camera matrix from Blender to OpenGL coordinate system
-            camera_matrix = utils.blender_to_opengl(camera_matrix)
-            # convert the camera matrix to view matrix
-            view_matrix_gt = camera_matrix.inverse()
-            # convert the view matrix to camera position and rotation (as a quaternion)
-            rotation_gt, translation_gt = utils.matrix_to_rotation_translation(
-                view_matrix_gt
-            )
-            # Compute loss between predicted and ground truth camera pose
-            loss = self.rotation_loss_weight * rotation_loss(
-                rotation, rotation_gt
-            ) + self.translation_loss_weight * torch.nn.functional.mse_loss(
-                translation, translation_gt
-            )
-        else:
-            loss = 0
+        # rotation, translation, forward_aux = self.model(batch)
+        model_outputs = self.model(batch)
+        metrics_dict = self.model.get_metrics_dict(model_outputs, batch)
+        loss_dict = self.model.get_loss_dict(model_outputs, batch, metrics_dict)
 
         if visualize:
-            n_visuals = min(n_visuals, len(batch["image"]))
-            neptune_run[log_prefix + "/input_image"].append(
-                utils.tensor_to_image(batch["image"][:n_visuals]), step=iteration
+            num_visuals = min(num_visuals, len(batch["image"]))
+            visuals_dict = self.model.get_visuals_dict(
+                model_outputs, batch, num_visuals=num_visuals
             )
-            neptune_run[log_prefix + "/input_mask"].append(
-                utils.tensor_to_image(batch["mask"][:n_visuals]), step=iteration
-            )
-            if "masks_randomly_occluded" in forward_aux:
-                neptune_run[log_prefix + "/masks_randomly_occluded"].append(
-                    utils.tensor_to_image(
-                        forward_aux["masks_randomly_occluded"][:n_visuals]
-                    ),
-                    step=iteration,
-                )
-            neptune_run[log_prefix + "/input_dino"].append(
-                utils.tensor_to_image(
-                    dino_features_to_image(
-                        forward_aux["patch_key_dino"][:n_visuals], self.dino_pca_mat
-                    )
-                ),
-                step=iteration,
-            )
-            mesh_renderer = utils.MeshRenderer(
-                obj_path=self.test_obj_path, device=self.device
-            )
-            # render the predicted camera pose
-            view_matrix = utils.rotation_translation_to_matrix(rotation, translation)
-            rendered_view_pred = mesh_renderer.render(view_matrix[:n_visuals])
-            neptune_run[log_prefix + "/rendered_view_pred"].append(
-                utils.tensor_to_image(rendered_view_pred[:n_visuals], chw=False),
-                step=iteration,
-            )
-            if "camera_matrix" in batch:
-                # render the ground truth camera pose
-                rendered_view_gt = mesh_renderer.render(view_matrix_gt[:n_visuals])
-                neptune_run[log_prefix + "/rendered_view_gt"].append(
-                    utils.tensor_to_image(rendered_view_gt, chw=False),
-                    step=iteration,
+            for visual_name, visual in visuals_dict.items():
+                neptune_run[log_prefix + "/" + visual_name].append(
+                    visual, step=iteration
                 )
 
-        return loss
+        return loss_dict["loss"]
 
     def evaluate(self, iteration, neptune_run):
         print("Evaluating...")
@@ -299,7 +211,7 @@ class Trainer:
                 log_prefix="val",
                 visualize=visualize,
                 iteration=iteration,
-                n_visuals=self.evaluate_n_visuals,
+                num_visuals=self.evaluate_num_visuals,
             )
             total_loss += loss
             num_batches += 1

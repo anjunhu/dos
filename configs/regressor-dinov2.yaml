@@ -51,11 +51,10 @@ model:
     facet: token
     layer: 11
     image_size: 224
-
-dino_feat_pca_path: /work/tomj/dove/dino/horses-baseline-dino_v2/pca.faiss
+  dino_feat_pca_path: /work/tomj/dove/dino/horses-baseline-dino_v2/pca.faiss
 
 checkpoint_root_dir: /scratch/shared/beegfs/tomj/synth_animals/regressor/logs
-experiment_name: regressor-v2-dinov2
+experiment_name: regressor-v2-dinov2-debug
 
 device: cuda:0
 
