@@ -23,7 +23,7 @@ val_dataset:
       suffix: _camera.txt
 
 model:
-  _target_: dos.models.CameraRegressor
+  _target_: dos.models.camera_regressor.CameraRegressor
 
   encoder:
     _target_: dos.networks.vit.ViTEncoder

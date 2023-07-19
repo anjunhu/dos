@@ -43,7 +43,7 @@ val_dataset:
 
 
 model:
-  _target_: dos.models.CameraRegressor
+  _target_: dos.models.camera_regressor.CameraRegressor
   encoder:
     _target_: dos.networks.vit.ViTEncoder
     model_type: dino_vits8

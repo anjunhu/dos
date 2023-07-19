@@ -1,29 +1,12 @@
 import faiss
 import torch
 
+from ..losses import rotation_loss
+from ..networks.misc import Encoder32
+from ..networks.vit import ViTEncoder
+from ..utils import dino_features_to_image
 from . import utils
-from .losses import rotation_loss
-from .networks.misc import Encoder32
-from .networks.vit import ViTEncoder
-from .utils import dino_features_to_image
-
-
-class BaseModel(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, batch):
-        raise NotImplementedError()
-
-    def get_metrics_dict(self, model_outputs, batch):
-        raise NotImplementedError()
-
-    def get_loss_dict(self, model_outputs, batch, metrics_dict):
-        # TODO: check what nerfstudio does with the metrics_dict
-        raise NotImplementedError()
-
-    def get_visuals_dict(self, model_outputs, batch):
-        raise NotImplementedError()
+from .base import BaseModel
 
 
 class CameraRegressor(BaseModel):
