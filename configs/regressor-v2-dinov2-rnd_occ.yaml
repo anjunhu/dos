@@ -1,7 +1,7 @@
-_target_: regressor.trainer.Trainer
+_target_: dos.trainer.Trainer
 
 train_dataset:
-  _target_: regressor.datasets.ImageDataset
+  _target_: dos.datasets.ImageDataset
   root_dir: /scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v2/train
   attributes:
     - name: image
@@ -12,7 +12,7 @@ train_dataset:
       suffix: _camera.txt
 
 val_dataset:
-  _target_: regressor.datasets.ImageDataset
+  _target_: dos.datasets.ImageDataset
   root_dir: /scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v2/val
   attributes:
     - name: image
@@ -23,10 +23,10 @@ val_dataset:
       suffix: _camera.txt
 
 model:
-  _target_: regressor.models.CameraRegressor
+  _target_: dos.models.CameraRegressor
 
   encoder:
-    _target_: regressor.networks.vit.ViTEncoder
+    _target_: dos.networks.vit.ViTEncoder
     model_type: dinov2_vits14
     stride: 7
     facet: token
@@ -34,7 +34,7 @@ model:
     image_size: 224
     
   random_mask_occluder:
-    _target_: regressor.utils.RandomMaskOccluder
+    _target_: dos.utils.RandomMaskOccluder
 
   dino_feat_pca_path: /work/tomj/dove/dino/horses-baseline-dino_v2/pca.faiss
 

@@ -1,7 +1,7 @@
-_target_: regressor.trainer.Trainer
+_target_: dos.trainer.Trainer
 
 train_dataset:
-  _target_: regressor.datasets.ImageDataset
+  _target_: dos.datasets.ImageDataset
   # root_dir: /scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v1-static/train
   root_dir: /scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v2/train
   attributes:
@@ -13,7 +13,7 @@ train_dataset:
       suffix: _camera.txt
 
 val_dataset:
-  _target_: regressor.datasets.ImageDataset
+  _target_: dos.datasets.ImageDataset
   root_dir: /scratch/shared/beegfs/tomj/datasets/synth_animals/renders/v2/val
   attributes:
     - name: image
@@ -24,7 +24,7 @@ val_dataset:
       suffix: _camera.txt
 
 # val_dataset:
-#   _target_: regressor.datasets.ImageDataset
+#   _target_: dos.datasets.ImageDataset
 #   root_dir: /scratch/shared/beegfs/tomj/datasets/horses/other_horse_dino_v3/test/pascal_good
 #   attributes:
 #     - name: image
@@ -33,7 +33,7 @@ val_dataset:
 #       suffix: _mask.png
 
 # val_dataset:
-#   _target_: regressor.datasets.ImageDataset
+#   _target_: dos.datasets.ImageDataset
 #   root_dir: /scratch/shared/beegfs/tomj/datasets/horses/other_horse_dino_v3/test/pascal_good
 #   attributes:
 #     - name: image
@@ -43,9 +43,9 @@ val_dataset:
 
 
 model:
-  _target_: regressor.models.CameraRegressor
+  _target_: dos.models.CameraRegressor
   encoder:
-    _target_: regressor.networks.vit.ViTEncoder
+    _target_: dos.networks.vit.ViTEncoder
     model_type: dino_vits8
     stride: 8
     facet: key
