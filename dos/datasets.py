@@ -6,6 +6,47 @@ import torchvision
 import torchvision.transforms as transforms
 from PIL import Image
 from torch.utils.data import Dataset
+from torch.utils.data._utils.collate import default_collate
+
+from .nvdiffrec.render.mesh import Mesh, concat_meshes, load_mesh
+
+
+class BaseLoader(object):
+    def __call__(self, x):
+        x = self.loader(x)
+        if hasattr(self, "transform"):
+            x = self.transform(x)
+        return x
+
+
+class ImageLoader(BaseLoader):
+    def __init__(self, image_size=256):
+        self.loader = torchvision.datasets.folder.default_loader
+        self.transform = transforms.Compose(
+            [transforms.Resize(image_size), transforms.ToTensor()]
+        )
+
+
+class MaskLoader(BaseLoader):
+    def __init__(self, image_size=256, mask_threshold=0.1):
+        self.loader = torchvision.datasets.folder.default_loader
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize(image_size, interpolation=Image.NEAREST),
+                transforms.ToTensor(),
+                lambda x: (x > mask_threshold).float(),
+            ]
+        )
+
+
+class TxtLoader(BaseLoader):
+    def __init__(self):
+        self.loader = lambda x: torch.from_numpy(np.loadtxt(x)).float()
+
+
+class MeshLoader(BaseLoader):
+    def __init__(self):
+        self.loader = lambda x: load_mesh(x, load_materials=False)
 
 
 class ImageDataset(Dataset):
@@ -21,23 +62,13 @@ class ImageDataset(Dataset):
         self.attributes = attributes
 
         # init the loaders and transforms
-        # TODO: add support for other attributes
         self.attribute_loaders = {
-            "image": torchvision.datasets.folder.default_loader,
-            "mask": torchvision.datasets.folder.default_loader,
-            "camera_matrix": lambda x: torch.from_numpy(np.loadtxt(x)).float(),
-        }
-        self.attribute_transforms = {
-            "image": transforms.Compose(
-                [transforms.Resize(image_size), transforms.ToTensor()]
-            ),
-            "mask": transforms.Compose(
-                [
-                    transforms.Resize(image_size, interpolation=Image.NEAREST),
-                    transforms.ToTensor(),
-                    lambda x: (x > mask_threshold).float(),
-                ]
-            ),
+            "image": ImageLoader(image_size=image_size),
+            "mask": MaskLoader(image_size=image_size, mask_threshold=mask_threshold),
+            "camera_matrix": TxtLoader(),
+            "pose": TxtLoader(),
+            "texture_features": torch.load,
+            "mesh": MeshLoader(),
         }
 
         # add root_dir to each attribute if not already present
@@ -84,10 +115,6 @@ class ImageDataset(Dataset):
         # Load the file
         data = self.attribute_loaders[attribute["name"]](file_path)
 
-        # Apply transforms
-        if attribute["name"] in self.attribute_transforms:
-            data = self.attribute_transforms[attribute["name"]](data)
-
         return data
 
     def __getitem__(self, index):
@@ -98,8 +125,24 @@ class ImageDataset(Dataset):
             sample_data[attribute["name"]] = self._load_attribute(
                 sample_name, attribute
             )
+        sample_data["name"] = sample_name
         return sample_data
 
     def __len__(self):
         """ """
         return len(self.sample_names)
+
+    @staticmethod
+    def collate_fn(batch):
+        mesh_items = {}
+        non_mesh_items = {}
+
+        # Separate mesh items from non-mesh items
+        for key, value in batch[0].items():
+            if isinstance(value, Mesh):
+                mesh_items[key] = concat_meshes([item[key] for item in batch])
+            else:
+                non_mesh_items[key] = default_collate([item[key] for item in batch])
+
+        # Combine mesh items and non-mesh items
+        return {**mesh_items, **non_mesh_items}

@@ -29,6 +29,8 @@ from torch import nn
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
+from .utils import utils
+
 
 class InfiniteDataset(torch.utils.data.Dataset):
     def __init__(self, dataset):
@@ -44,8 +46,8 @@ class InfiniteDataset(torch.utils.data.Dataset):
 @dataclass
 class Trainer:
     train_dataset: Dataset
-    val_dataset: Dataset
     model: nn.Module
+    val_dataset: Optional[Dataset] = None
     batch_size: int = 32
     val_batch_size: Optional[int] = None
     num_workers: int = 4
@@ -64,16 +66,21 @@ class Trainer:
     checkpoint_dir: Optional[str] = None
     checkpoint_path: Optional[str] = None
     checkpoint_name: Optional[str] = None
+    modules_to_load: Optional[list] = None
     shuffle_val: bool = False
     test_only: bool = False
     resume: bool = False
     resume_with_latest: bool = False
-    neptune_project: str = "tomj/camera-regressor"
-    neptune_api_token: str = "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI2Y2MwOTJmNS01NmRlLTRjNmItYWNkYi05NmZmMGY4NzA4N2MifQ=="
+    neptune_project: Optional[str] = None
+    neptune_api_token: Optional[str] = None
 
     def __post_init__(self):
+        self.val_dataset = self.val_dataset or self.train_dataset
+
+        self.train_dataset_collate_fn = self.train_dataset.collate_fn
+        self.val_dataset_collate_fn = self.val_dataset.collate_fn
+
         self.train_dataset = InfiniteDataset(self.train_dataset)
-        self.val_dataset = self.val_dataset
         self.model = self.model.to(self.device)
 
         # either both experiment_name and checkpoint_root_dir or only checkpoint_dir should be specified
@@ -91,6 +98,16 @@ class Trainer:
             ), "Either both experiment_name and checkpoint_root_dir or only checkpoint_dir should be specified."
             self.checkpoint_root_dir = Path(self.checkpoint_root_dir)
             self.checkpoint_dir = self.checkpoint_root_dir / self.experiment_name
+
+    def load_module(self, name, path):
+        """Load a module from a checkpoint."""
+        module = utils.rgetattr(self.model, name)
+        module.load_state_dict(torch.load(path))
+
+    def load_modules(self, modules_to_load):
+        """Load modules from checkpoints."""
+        for module in modules_to_load:
+            self.load_module(module["name"], module["path"])
 
     def load_checkpoint(self, optim=True):
         """Search the specified/latest checkpoint in checkpoint_dir and load the model and optimizer."""
@@ -167,7 +184,7 @@ class Trainer:
     ):
         # TODO: where it should actually be done
         # non_blocking=True is needed for async data loading
-        batch = {k: v.to(self.device, non_blocking=True) for k, v in batch.items()}
+        batch = utils.safe_batch_to_device(batch, self.device, non_blocking=True)
 
         # rotation, translation, forward_aux = self.model(batch)
         model_outputs = self.model(batch)
@@ -195,6 +212,7 @@ class Trainer:
             shuffle=self.shuffle_val,
             num_workers=self.num_workers,
             pin_memory=True,
+            collate_fn=self.train_dataset_collate_fn,
         )
 
         total_loss = 0
@@ -221,7 +239,7 @@ class Trainer:
         neptune_run["val/loss"].append(value=avg_loss, step=iteration)
 
     def train(self, config=None):
-        """
+        """sa
         config: dict TODO: config for logging, might be better to move it to elsewhere
         """
         # set random seed
@@ -242,6 +260,7 @@ class Trainer:
             shuffle=True,
             num_workers=self.num_workers,
             pin_memory=True,
+            collate_fn=self.train_dataset_collate_fn,
         )
 
         # Define optimizer
@@ -251,6 +270,10 @@ class Trainer:
         # resume from checkpoint
         if self.resume:
             start_total_iter = self.load_checkpoint(optim=True)
+
+        # load individual modules
+        if self.modules_to_load is not None:
+            self.load_modules(self.modules_to_load)
 
         # TODO: consider better way to do this
         if self.test_only:
@@ -283,7 +306,10 @@ class Trainer:
             )
             # Backpropagation and optimization step
             optimizer.zero_grad()
-            loss.backward()
+            if loss.requires_grad:
+                loss.backward()
+            else:
+                warnings.warn("loss.backward() is not called.")
             optimizer.step()
 
             print(f"iter: {iteration}, loss: {loss.item():.4f}")

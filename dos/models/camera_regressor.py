@@ -4,8 +4,9 @@ import torch
 from ..losses import rotation_loss
 from ..networks.misc import Encoder32
 from ..networks.vit import ViTEncoder
-from ..utils import dino_features_to_image
-from . import utils
+from ..utils import utils
+from ..utils import visuals as utils_visuals
+from ..utils.utils import dino_features_to_image
 from .base import BaseModel
 
 
@@ -123,11 +124,7 @@ class CameraRegressor(BaseModel):
         # TODO: should return tensor or PIL image?
 
         def _get_visuals_dict(input_dict, names):
-            return {
-                name: utils.tensor_to_image(input_dict[name][:num_visuals])
-                for name in names
-                if name in input_dict
-            }
+            return utils_visuals.get_visuals_dict(input_dict, names, num_visuals)
 
         visuals_dict = {}
 

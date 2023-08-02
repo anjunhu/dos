@@ -1,37 +1,41 @@
-# Copyright (c) 2020-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved. 
+# Copyright (c) 2020-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
 # property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction, 
-# disclosure or distribution of this material and related documentation 
-# without an express license agreement from NVIDIA CORPORATION or 
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-from difflib import unified_diff
 import os
+from difflib import unified_diff
+from typing import List
+
 import numpy as np
 import torch
 
-from . import obj
-from . import util
+from . import obj, util
+
 
 #########################################################################################
 # Base mesh class
 #
-# Minibatch in mesh is supported, as long as each mesh shares the same edge connectivity. 
+# Minibatch in mesh is supported, as long as each mesh shares the same edge connectivity.
 #########################################################################################
 class Mesh:
-    def __init__(self,
-                 v_pos=None,
-                 t_pos_idx=None,
-                 v_nrm=None,
-                 t_nrm_idx=None,
-                 v_tex=None,
-                 t_tex_idx=None,
-                 v_tng=None,
-                 t_tng_idx=None,
-                 material=None,
-                 base=None):
+    def __init__(
+        self,
+        v_pos=None,
+        t_pos_idx=None,
+        v_nrm=None,
+        t_nrm_idx=None,
+        v_tex=None,
+        t_tex_idx=None,
+        v_tng=None,
+        t_tng_idx=None,
+        material=None,
+        base=None,
+    ):
         self.v_pos = v_pos
         self.v_nrm = v_nrm
         self.v_tex = v_tex
@@ -44,6 +48,26 @@ class Mesh:
 
         if base is not None:
             self.copy_none(base)
+
+    def to(self, *args, **kwargs):
+        attrs = [
+            "v_pos",
+            "t_pos_idx",
+            "v_nrm",
+            "t_nrm_idx",
+            "v_tex",
+            "t_tex_idx",
+            "v_tng",
+            "t_tng_idx",
+            "material",
+        ]
+
+        for attr in attrs:
+            attr_value = getattr(self, attr)
+            if attr_value is not None:
+                setattr(self, attr, attr_value.to(*args, **kwargs))
+
+        return self
 
     def __len__(self):
         return len(self.v_pos)
@@ -87,7 +111,7 @@ class Mesh:
         if out.t_tng_idx is not None:
             out.t_tng_idx = out.t_tng_idx.clone().detach()
         return out
-    
+
     def detach(self):
         return self.clone()
 
@@ -124,7 +148,9 @@ class Mesh:
         if not self.v_tex.shape[0] == verts.shape[0]:
             assert self.v_tex.shape[0] == 1
             self.v_tex = self.v_tex.repeat(verts.shape[0], 1, 1)
-        return make_mesh(verts, self.t_pos_idx, self.v_tex, self.t_tex_idx, self.material)
+        return make_mesh(
+            verts, self.t_pos_idx, self.v_tex, self.t_tex_idx, self.material
+        )
 
     def get_m_to_n(self, m: int, n: int):
         """
@@ -171,9 +197,9 @@ class Mesh:
         Returns:
             new Mesh object with the n-th mesh.
         """
-        verts = self.v_pos[n:n+1, ...]
+        verts = self.v_pos[n : n + 1, ...]
         faces = self.t_pos_idx
-        uvs = self.v_tex[n:n+1, ...]
+        uvs = self.v_tex[n : n + 1, ...]
         uv_idx = self.t_tex_idx
         mat = self.material
 
@@ -183,17 +209,24 @@ class Mesh:
 ######################################################################################
 # Mesh loading helper
 ######################################################################################
-def load_mesh(filename, mtl_override=None):
+def load_mesh(filename, mtl_override=None, load_materials=True):
     name, ext = os.path.splitext(filename)
     if ext == ".obj":
-        return obj.load_obj(filename, clear_ks=True, mtl_override=mtl_override)
+        return obj.load_obj(
+            filename,
+            clear_ks=True,
+            mtl_override=mtl_override,
+            load_materials=load_materials,
+        )
     assert False, "Invalid mesh file extension"
+
 
 ######################################################################################
 # Compute AABB
 ######################################################################################
 def aabb(mesh):
     return torch.min(mesh.v_pos, dim=0).values, torch.max(mesh.v_pos, dim=0).values
+
 
 ######################################################################################
 # Compute unique edge list from attribute/vertex index list
@@ -202,21 +235,25 @@ def compute_edges(attr_idx, return_inverse=False):
     with torch.no_grad():
         # Create all edges, packed by triangle
         idx = attr_idx[0]
-        all_edges = torch.cat((
-            torch.stack((idx[:, 0], idx[:, 1]), dim=-1),
-            torch.stack((idx[:, 1], idx[:, 2]), dim=-1),
-            torch.stack((idx[:, 2], idx[:, 0]), dim=-1),
-        ), dim=-1).view(-1, 2)
+        all_edges = torch.cat(
+            (
+                torch.stack((idx[:, 0], idx[:, 1]), dim=-1),
+                torch.stack((idx[:, 1], idx[:, 2]), dim=-1),
+                torch.stack((idx[:, 2], idx[:, 0]), dim=-1),
+            ),
+            dim=-1,
+        ).view(-1, 2)
 
         # Swap edge order so min index is always first
         order = (all_edges[:, 0] > all_edges[:, 1]).long().unsqueeze(dim=1)
-        sorted_edges = torch.cat((
-            torch.gather(all_edges, 1, order),
-            torch.gather(all_edges, 1, 1 - order)
-        ), dim=-1)
+        sorted_edges = torch.cat(
+            (torch.gather(all_edges, 1, order), torch.gather(all_edges, 1, 1 - order)),
+            dim=-1,
+        )
 
         # Eliminate duplicates and return inverse mapping
         return torch.unique(sorted_edges, dim=0, return_inverse=return_inverse)
+
 
 ######################################################################################
 # Compute unique edge to face mapping from attribute/vertex index list
@@ -226,33 +263,39 @@ def compute_edge_to_face_mapping(attr_idx, return_inverse=False):
         # Get unique edges
         # Create all edges, packed by triangle
         idx = attr_idx[0]
-        all_edges = torch.cat((
-            torch.stack((idx[:, 0], idx[:, 1]), dim=-1),
-            torch.stack((idx[:, 1], idx[:, 2]), dim=-1),
-            torch.stack((idx[:, 2], idx[:, 0]), dim=-1),
-        ), dim=-1).view(-1, 2)
+        all_edges = torch.cat(
+            (
+                torch.stack((idx[:, 0], idx[:, 1]), dim=-1),
+                torch.stack((idx[:, 1], idx[:, 2]), dim=-1),
+                torch.stack((idx[:, 2], idx[:, 0]), dim=-1),
+            ),
+            dim=-1,
+        ).view(-1, 2)
 
         # Swap edge order so min index is always first
         order = (all_edges[:, 0] > all_edges[:, 1]).long().unsqueeze(dim=1)
-        sorted_edges = torch.cat((
-            torch.gather(all_edges, 1, order),
-            torch.gather(all_edges, 1, 1 - order)
-        ), dim=-1)
+        sorted_edges = torch.cat(
+            (torch.gather(all_edges, 1, order), torch.gather(all_edges, 1, 1 - order)),
+            dim=-1,
+        )
 
         # Elliminate duplicates and return inverse mapping
         unique_edges, idx_map = torch.unique(sorted_edges, dim=0, return_inverse=True)
 
         tris = torch.arange(idx.shape[0]).repeat_interleave(3).cuda()
 
-        tris_per_edge = torch.zeros((unique_edges.shape[0], 2), dtype=torch.int64).cuda()
+        tris_per_edge = torch.zeros(
+            (unique_edges.shape[0], 2), dtype=torch.int64
+        ).cuda()
 
         # Compute edge to face table
-        mask0 = order[:,0] == 0
-        mask1 = order[:,0] == 1
+        mask0 = order[:, 0] == 0
+        mask1 = order[:, 0] == 1
         tris_per_edge[idx_map[mask0], 0] = tris[mask0]
         tris_per_edge[idx_map[mask1], 1] = tris[mask1]
 
         return tris_per_edge
+
 
 ######################################################################################
 # Align base mesh to reference mesh:move & rescale to match bounding boxes.
@@ -261,10 +304,11 @@ def unit_size(mesh):
     with torch.no_grad():
         vmin, vmax = aabb(mesh)
         scale = 2 / torch.max(vmax - vmin).item()
-        v_pos = mesh.v_pos - (vmax + vmin) / 2 # Center mesh on origin
-        v_pos = v_pos * scale                  # Rescale to unit size
+        v_pos = mesh.v_pos - (vmax + vmin) / 2  # Center mesh on origin
+        v_pos = v_pos * scale  # Rescale to unit size
 
         return Mesh(v_pos, base=mesh)
+
 
 ######################################################################################
 # Center & scale mesh for rendering
@@ -274,6 +318,7 @@ def center_by_reference(base_mesh, ref_aabb, scale):
     scale = scale / torch.max(ref_aabb[1] - ref_aabb[0]).item()
     v_pos = (base_mesh.v_pos - center[None, ...]) * scale
     return Mesh(v_pos, base=base_mesh)
+
 
 ######################################################################################
 # Simple smooth vertex normal computation
@@ -298,15 +343,18 @@ def auto_normals(imesh):
     v_nrm.scatter_add_(1, i2[None, :, None].repeat(batch_size, 1, 3), face_normals)
 
     # Normalize, replace zero (degenerated) normals with some default value
-    v_nrm = torch.where(util.dot(v_nrm, v_nrm) > 1e-20, 
-                        v_nrm, torch.tensor([0.0, 0.0, 1.0], 
-                        dtype=torch.float32, device='cuda'))
+    v_nrm = torch.where(
+        util.dot(v_nrm, v_nrm) > 1e-20,
+        v_nrm,
+        torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32, device="cuda"),
+    )
     v_nrm = util.safe_normalize(v_nrm)
 
     if torch.is_anomaly_enabled():
         assert torch.all(torch.isfinite(v_nrm))
 
     return Mesh(v_nrm=v_nrm, t_nrm_idx=imesh.t_pos_idx, base=imesh)
+
 
 ######################################################################################
 # Compute tangent space from texture map coordinates
@@ -318,41 +366,50 @@ def compute_tangents(imesh):
     vn_idx = [None] * 3
     pos = [None] * 3
     tex = [None] * 3
-    for i in range(0,3):
+    for i in range(0, 3):
         pos[i] = imesh.v_pos[:, imesh.t_pos_idx[0, :, i]]
         tex[i] = imesh.v_tex[:, imesh.t_tex_idx[0, :, i]]
-        vn_idx[i] = imesh.t_nrm_idx[..., i:i+1]
+        vn_idx[i] = imesh.t_nrm_idx[..., i : i + 1]
 
     tangents = torch.zeros_like(imesh.v_nrm)
-    tansum   = torch.zeros_like(imesh.v_nrm)
+    tansum = torch.zeros_like(imesh.v_nrm)
 
     # Compute tangent space for each triangle
     uve1 = tex[1] - tex[0]  # Shape: (B, F, 2)
     uve2 = tex[2] - tex[0]  # Shape: (B, F, 2)
-    pe1  = pos[1] - pos[0]  # Shape: (B, F, 3)
-    pe2  = pos[2] - pos[0]  # Shape: (B, F, 3)
-    
-    nom   = pe1 * uve2[..., 1:2] - pe2 * uve1[..., 1:2]  # Shape: (B, F, 3)
-    denom = uve1[..., 0:1] * uve2[..., 1:2] - uve1[..., 1:2] * uve2[..., 0:1]  # Shape: (B, F, 1)
-    
+    pe1 = pos[1] - pos[0]  # Shape: (B, F, 3)
+    pe2 = pos[2] - pos[0]  # Shape: (B, F, 3)
+
+    nom = pe1 * uve2[..., 1:2] - pe2 * uve1[..., 1:2]  # Shape: (B, F, 3)
+    denom = (
+        uve1[..., 0:1] * uve2[..., 1:2] - uve1[..., 1:2] * uve2[..., 0:1]
+    )  # Shape: (B, F, 1)
+
     # Avoid division by zero for degenerated texture coordinates
-    tang = nom / torch.where(denom > 0.0, torch.clamp(denom, min=1e-6), torch.clamp(denom, max=-1e-6))  # Shape: (B, F, 3)
+    tang = nom / torch.where(
+        denom > 0.0, torch.clamp(denom, min=1e-6), torch.clamp(denom, max=-1e-6)
+    )  # Shape: (B, F, 3)
 
     # Update all 3 vertices
-    for i in range(0,3):
+    for i in range(0, 3):
         idx = vn_idx[i].repeat(batch_size, 1, 3)  # Shape: (B, F, 3)
-        tangents.scatter_add_(1, idx, tang)       # tangents[n_i] = tangents[n_i] + tang
-        tansum.scatter_add_(1, idx, torch.ones_like(tang)) # tansum[n_i] = tansum[n_i] + 1
+        tangents.scatter_add_(1, idx, tang)  # tangents[n_i] = tangents[n_i] + tang
+        tansum.scatter_add_(
+            1, idx, torch.ones_like(tang)
+        )  # tansum[n_i] = tansum[n_i] + 1
     tangents = tangents / tansum
 
     # Normalize and make sure tangent is perpendicular to normal
     tangents = util.safe_normalize(tangents)
-    tangents = util.safe_normalize(tangents - util.dot(tangents, imesh.v_nrm) * imesh.v_nrm)
+    tangents = util.safe_normalize(
+        tangents - util.dot(tangents, imesh.v_nrm) * imesh.v_nrm
+    )
 
     if torch.is_anomaly_enabled():
         assert torch.all(torch.isfinite(tangents))
 
     return Mesh(v_tng=tangents, t_tng_idx=imesh.t_nrm_idx, base=imesh)
+
 
 ######################################################################################
 # Create new Mesh from verts, faces, uvs, and uv_idx. The rest is auto computed.
@@ -371,10 +428,60 @@ def make_mesh(verts, faces, uvs, uv_idx, material):
     Returns:
         new Mesh object.
     """
-    assert len(verts.shape) == 3 and len(faces.shape) == 3 and len(uvs.shape) == 3 and len(uv_idx.shape) == 3, "All components must be batched."
-    assert faces.shape[0] == 1 and uv_idx.shape[0] == 1, "Every mesh must share the same edge connectivity."
-    assert verts.shape[0] == uvs.shape[0], "Batch size must be consistent."
+    assert (
+        len(verts.shape) == 3 and len(faces.shape) == 3
+    ), "All components must be batched."
+    if uvs is not None:
+        assert len(uvs.shape) == 3, "All components must be batched."
+    if uv_idx is not None:
+        assert len(uv_idx.shape) == 3, "All components must be batched."
+        assert uv_idx.shape[0] == 1, "Every mesh must share the same edge connectivity."
+    assert faces.shape[0] == 1, "Every mesh must share the same edge connectivity."
+    if uvs is not None:
+        assert verts.shape[0] == uvs.shape[0], "Batch size must be consistent."
     ret = Mesh(verts, faces, v_tex=uvs, t_tex_idx=uv_idx, material=material)
     ret = auto_normals(ret)
-    ret = compute_tangents(ret)
+    if uvs is not None:
+        ret = compute_tangents(ret)
     return ret
+
+
+def concat_meshes(meshes: List[Mesh]) -> Mesh:
+    """
+    Create new Mesh class which contains all input meshes.
+
+    Args:
+        meshes: list of Mesh objects.
+
+    Returns:
+        new Mesh object.
+    """
+    verts = []
+    for mesh in meshes:
+        v_pos = mesh.v_pos
+        if len(v_pos.shape) == 2:
+            v_pos = v_pos.unsqueeze(0)
+        verts.append(v_pos)
+    verts = torch.cat(verts, dim=0)
+
+    faces = meshes[0].t_pos_idx
+    if len(faces.shape) == 2:
+        faces = faces.unsqueeze(0)
+
+    if meshes[0].v_tex is not None:
+        for mesh in meshes:
+            v_tex = mesh.v_tex
+            if len(v_tex.shape) == 2:
+                v_tex = v_tex.unsqueeze(0)
+            uvs.append(v_tex)
+    else:
+        uvs = None
+
+    uv_idx = meshes[0].t_tex_idx
+    if uv_idx is not None:
+        if len(uv_idx.shape) == 2:
+            uv_idx = uv_idx.unsqueeze(0)
+
+    mat = meshes[0].material
+
+    return make_mesh(verts, faces, uvs, uv_idx, mat)

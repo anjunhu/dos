@@ -1,3 +1,4 @@
+import functools
 import math
 import random
 from dataclasses import dataclass
@@ -225,3 +226,21 @@ class RandomMaskOccluder(object):
                 ] = 0
 
         return masks
+
+
+def rgetattr(obj, attr, *args):
+    # https://stackoverflow.com/questions/31174295/getattr-and-setattr-on-nested-subobjects-chained-properties
+    def _getattr(obj, attr):
+        return getattr(obj, attr, *args)
+
+    return functools.reduce(_getattr, [obj] + attr.split("."))
+
+
+def safe_batch_to_device(batch, *args, **kwargs):
+    out_batch = {}
+    for k, v in batch.items():
+        if hasattr(v, "to"):
+            out_batch[k] = v.to(*args, **kwargs)
+        else:
+            out_batch[k] = v
+    return out_batch
