@@ -7,6 +7,11 @@ Git modules are used for dependencies. To clone the repository with all submodul
 git clone --recursive
 ```
 
+## Runining 
+```
+python main.py <paths_to_config_files>
+```
+
 ## Development
 
 ### TODO
