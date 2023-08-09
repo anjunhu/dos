@@ -4,6 +4,8 @@ from ..components.skinning.bones_estimation import BonesEstimator
 from ..components.skinning.skinning import mesh_skinning
 from ..modules.renderer import Renderer
 from ..predictors.texture import TexturePredictor
+from ..utils import geometry as geometry_utils
+from ..utils import mesh as mesh_utils
 from ..utils import visuals as visuals_utils
 from .base import BaseModel
 
@@ -34,6 +36,36 @@ class Articulator(BaseModel):
         # TODO: implement articulation predictor
         self.articulation_predictor = articulation_predictor
         self.renderer = renderer if renderer is not None else Renderer()
+
+    def compute_correspondences(
+        self, mesh, pose, renderer, bones, source_image, target_image
+    ):
+        # TODO: implement keypoint loss (in a separate function)
+        # 1. Extract features from the rendered image and the target image
+        # 2. Sample source keypoints
+        #  - sample keypoints along the bones
+        #  - find the closest visible point on the mesh in 3D (the visibility is done in 2D)
+        # 3. Extract features from the source keypoints
+        # 4. Find corresponding target keypoints (TODO: some additional tricks e.g. optimal transport etc.)
+
+        # get visible vertices
+        mvp, _, _ = geometry_utils.get_camera_extrinsics_and_mvp_from_pose(
+            pose,
+            renderer.fov,
+            renderer.znear,
+            renderer.zfar,
+            renderer.cam_pos_z_offset,
+        )
+        visible_vertices = mesh_utils.get_visible_vertices(
+            mesh, mvp, renderer.resolution
+        )
+        # TODO: continue here
+
+        # project vertices/keypoints example
+        projected_vertices = geometry_utils.project_points(mesh.v_pos, mvp)
+
+        output_dict = {}
+        return output_dict
 
     def forward(self, batch):
         mesh = batch["mesh"]  # rest pose
@@ -68,11 +100,21 @@ class Articulator(BaseModel):
             pose=batch["pose"],
             im_features=batch["texture_features"],
         )
+        # compute_correspondences for keypoint loss
+        correspondences_dict = self.compute_correspondences(
+            articulated_mesh,
+            batch["pose"],
+            self.renderer,
+            bones_predictor_outputs["bones_pred"],
+            renderer_outputs["image_pred"],
+            batch["image"],
+        )
 
         # esamble outputs
         outputs = {}
         # TODO: probaly rename the ouputs of the renderer
         outputs.update(renderer_outputs)
+        outputs.update(correspondences_dict)
 
         return outputs
 
@@ -82,12 +124,6 @@ class Articulator(BaseModel):
     def get_loss_dict(self, model_outputs, batch, metrics_dict):
         """ """
         # TODO: implement keypoint loss (in a separate function)
-        # 1. Extract features from the rendered image and the target image
-        # 2. Sample source keypoints
-        #  - sample keypoints along the bones
-        #  - find the closest visible point on the mesh in 3D (the visibility is done in 2D)
-        # 3. Extract features from the source keypoints
-        # 4. Find corresponding target keypoints (TODO: some additional tricks e.g. optimal transport etc.)
         # 5. Compute the loss between the source and target keypoints
         return {"loss": torch.tensor(0.0)}
 
