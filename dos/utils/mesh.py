@@ -26,7 +26,7 @@ def get_visible_vertices(mesh, mvp, resolution):
         visibility = torch.zeros(num_verts, device=visible_verts.device)
         visibility[visible_verts] = 1
 
-    res += [visibility]
+        res += [visibility]
     res = torch.stack(res, dim=0)
 
     return res
