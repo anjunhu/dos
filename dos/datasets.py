@@ -104,7 +104,8 @@ class ImageDataset(Dataset):
 
         # Extract stem (file name without suffix) for each file
         sample_names = [str(f)[: -len(suffix)] for f in files]
-
+        # Remove root_dir from the sample names
+        sample_names = [str(f)[len(str(root_dir)) + 1 :] for f in sample_names]
         return sample_names
 
     def _load_attribute(self, sample_name, attribute):
