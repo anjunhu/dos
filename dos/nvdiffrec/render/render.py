@@ -55,11 +55,42 @@ def shade(
     perturbed_nrm = None
     # Combined texture, used for MLPs because lookups are expensive
     # all_tex_jitter = material.sample(gb_tex_pos + torch.normal(mean=0, std=0.01, size=gb_tex_pos.shape, device="cuda"), feat=feat)
-    if material is not None:
-        all_tex = material.sample(gb_tex_pos, feat=feat)
+    if material is not None and "kd" in material:
+        # fmt: off
+        # restored nvdiffrec code
+        # TODO: nicer formatting
+        if 'kd_ks_normal' in material:
+            # Combined texture, used for MLPs because lookups are expensive
+            all_tex_jitter = material['kd_ks_normal'].sample(gb_pos + torch.normal(mean=0, std=0.01, size=gb_pos.shape, device="cuda"))
+            all_tex = material['kd_ks_normal'].sample(gb_pos)
+            assert all_tex.shape[-1] == 9 or all_tex.shape[-1] == 10, "Combined kd_ks_normal must be 9 or 10 channels"
+            kd, ks, perturbed_nrm = all_tex[..., :-6], all_tex[..., -6:-3], all_tex[..., -3:]
+            # Compute albedo (kd) gradient, used for material regularizer
+            kd_grad    = torch.sum(torch.abs(all_tex_jitter[..., :-6] - all_tex[..., :-6]), dim=-1, keepdim=True) / 3
+        else:
+            kd_jitter  = material['kd'].sample(gb_texc + torch.normal(mean=0, std=0.005, size=gb_texc.shape, device="cuda"), gb_texc_deriv)
+            kd = material['kd'].sample(gb_texc, gb_texc_deriv)
+            ks = material['ks'].sample(gb_texc, gb_texc_deriv)[..., 0:3] # skip alpha
+            if 'normal' in material:
+                perturbed_nrm = material['normal'].sample(gb_texc, gb_texc_deriv)
+            kd_grad    = torch.sum(torch.abs(kd_jitter[..., 0:3] - kd[..., 0:3]), dim=-1, keepdim=True) / 3
+
+        # Separate kd into alpha and color, default alpha = 1
+        alpha = kd[..., 3:4] if kd.shape[-1] == 4 else torch.ones_like(kd[..., 0:1]) 
+        kd = kd[..., 0:3]
+
+        if 'no_perturbed_nrm' in material and material['no_perturbed_nrm']:
+            perturbed_nrm = None
+        # fmt: on
     else:
-        all_tex = torch.ones(*gb_pos.shape[:-1], 9, device=gb_pos.device)
-    kd, ks, perturbed_nrm = all_tex[..., :3], all_tex[..., 3:6], all_tex[..., 6:9]
+        if material is not None:
+            all_tex = material.sample(gb_tex_pos, feat=feat)
+        else:
+            all_tex = torch.ones(*gb_pos.shape[:-1], 9, device=gb_pos.device)
+        kd, ks, perturbed_nrm = all_tex[..., :3], all_tex[..., 3:6], all_tex[..., 6:9]
+
+        if material is None or not material.perturb_normal:
+            perturbed_nrm = None
 
     # Compute albedo (kd) gradient, used for material regularizer
     # kd_grad    = torch.sum(torch.abs(all_tex_jitter[..., :-6] - all_tex[..., :-6]), dim=-1, keepdim=True) / 3
@@ -83,8 +114,6 @@ def shade(
     ################################################################################
     # Normal perturbation & normal bend
     ################################################################################
-    if material is None or not material.perturb_normal:
-        perturbed_nrm = None
 
     if gb_tangent is not None:
         gb_normal = ru.prepare_shading_normal(

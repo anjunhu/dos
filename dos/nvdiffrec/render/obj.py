@@ -148,6 +148,14 @@ def load_obj(filename, clear_ks=True, mtl_override=None, load_materials=True):
         else None
     )
 
+    # batch all components
+    vertices = vertices.unsqueeze(0)
+    faces = faces.unsqueeze(0)
+    normals = normals.unsqueeze(0) if normals is not None else None
+    nfaces = nfaces.unsqueeze(0) if nfaces is not None else None
+    texcoords = texcoords.unsqueeze(0) if texcoords is not None else None
+    tfaces = tfaces.unsqueeze(0) if tfaces is not None else None
+
     return mesh.Mesh(
         vertices, faces, normals, nfaces, texcoords, tfaces, material=uber_material
     )

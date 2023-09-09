@@ -3,6 +3,7 @@ import torch
 from ..components.skinning.bones_estimation import BonesEstimator
 from ..components.skinning.skinning import mesh_skinning
 from ..modules.renderer import Renderer
+from ..nvdiffrec.render.mesh import load_mesh
 from ..predictors.texture import TexturePredictor
 from ..utils import geometry as geometry_utils
 from ..utils import mesh as mesh_utils
@@ -20,13 +21,16 @@ class Articulator(BaseModel):
     def __init__(
         self,
         encoder=None,
+        enable_texture_predictor=True,
         texture_predictor=None,
         bones_predictor=None,
         articulation_predictor=None,
         renderer=None,
+        shape_template_path=None,
     ):
         super().__init__()
         self.encoder = encoder  # encoder TODO: should be part of the predictor?
+        self.enable_texture_predictor = enable_texture_predictor
         self.texture_predictor = (
             texture_predictor if texture_predictor is not None else TexturePredictor()
         )
@@ -36,6 +40,14 @@ class Articulator(BaseModel):
         # TODO: implement articulation predictor
         self.articulation_predictor = articulation_predictor
         self.renderer = renderer if renderer is not None else Renderer()
+
+        if shape_template_path is not None:
+            self.shape_template = self._load_shape_template(shape_template_path)
+        else:
+            self.shape_template = None
+
+    def _load_shape_template(self, shape_template_path):
+        return load_mesh(shape_template_path)
 
     def compute_correspondences(
         self, mesh, pose, renderer, bones, source_image, target_image
@@ -68,7 +80,11 @@ class Articulator(BaseModel):
         return output_dict
 
     def forward(self, batch):
-        mesh = batch["mesh"]  # rest pose
+        batch_size = batch["image"].shape[0]
+        if self.shape_template is not None:
+            mesh = self.shape_template.extend(batch_size)
+        else:
+            mesh = batch["mesh"]  # rest pose
 
         # estimate bones
         bones_predictor_outputs = self.bones_predictor(mesh.v_pos)
@@ -94,11 +110,19 @@ class Articulator(BaseModel):
         )
 
         # render mesh
+        if "texture_features" in batch:
+            texture_features = batch["texture_features"]
+        else:
+            texture_features = None
+        if self.enable_texture_predictor:
+            material = self.texture_predictor
+        else:
+            material = mesh.material
         renderer_outputs = self.renderer(
             articulated_mesh,
-            self.texture_predictor,
+            material=material,
             pose=batch["pose"],
-            im_features=batch["texture_features"],
+            im_features=texture_features,
         )
         # compute_correspondences for keypoint loss
         correspondences_dict = self.compute_correspondences(

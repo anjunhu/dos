@@ -22,7 +22,7 @@ class Renderer(object):
     def __call__(
         self,
         shape,
-        texture,
+        material=None,
         # either
         pose=None,
         # or
@@ -74,7 +74,7 @@ class Renderer(object):
             mtx_in=mvp,
             w2c=w2c,
             view_pos=campos,
-            material=texture,
+            material=material,
             lgt=light,
             resolution=resolution,
             spp=spp,
