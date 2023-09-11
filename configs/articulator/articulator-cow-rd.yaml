@@ -1,0 +1,47 @@
+_target_: dos.trainer.Trainer
+
+train_dataset:
+  _target_: dos.datasets.ImageDataset
+  root_dir: /scratch/shared/beegfs/tomj/projects/articulator/datasets/synth_animals/cow-rd-articulator-v1.0
+  attributes:
+    - name: image
+      suffix: _rgb.png
+    - name: mask
+      suffix: _mask.png
+    - name: camera_matrix
+      suffix: _camera.txt
+
+model:
+  _target_: dos.models.articulator.Articulator
+  bones_predictor:
+    _target_: dos.components.skinning.bones_estimation.BonesEstimator
+    num_body_bones: 8
+    num_leg_bones: 3
+    body_bones_type: z_minmax_y+
+    temperature: 0.05
+  shape_template_path: /scratch/shared/beegfs/tomj/projects/articulator/data/synth_animals/shape_templates/cow_female-rd/Cow-OBJ-v01/Cow_Highpoly.obj
+
+  enable_texture_predictor: False
+
+  renderer:
+    _target_: dos.modules.renderer.Renderer
+    cam_pos_z_offset: 0.0
+    fov: 28.84 # blender 70 mm focal length, 36 mm sensor width
+  
+checkpoint_root_dir: /scratch/shared/beegfs/tomj/articulator/logs
+experiment_name: articulator-dev-0.1
+
+device: cuda:0
+
+# num_iterations: 10000
+# resume: True
+
+learning_rate: 1e-4
+
+# for debugging
+num_iterations: 40
+# num_vis_iterations: 10
+# num_eval_iterations: 10
+# save_checkpoint_freq: 10
+num_workers: 0
+batch_size: 2

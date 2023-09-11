@@ -114,20 +114,30 @@ class Articulator(BaseModel):
             texture_features = batch["texture_features"]
         else:
             texture_features = None
+
         if self.enable_texture_predictor:
             material = self.texture_predictor
         else:
+            # if texture predictor is not enabled, use the loaded material from the mesh
             material = mesh.material
+
+        # if pose not provided, compute it from the camera matrix
+        if "pose" not in batch:
+            pose = geometry_utils.blender_camera_matrix_to_magicpony_pose(
+                batch["camera_matrix"]
+            )
+
         renderer_outputs = self.renderer(
             articulated_mesh,
             material=material,
-            pose=batch["pose"],
+            pose=pose,
             im_features=texture_features,
         )
+
         # compute_correspondences for keypoint loss
         correspondences_dict = self.compute_correspondences(
             articulated_mesh,
-            batch["pose"],
+            pose,
             self.renderer,
             bones_predictor_outputs["bones_pred"],
             renderer_outputs["image_pred"],

@@ -5,6 +5,7 @@ from einops import repeat
 
 from ..nvdiffrec.render import renderutils
 from ..nvdiffrec.render import util as render_util
+from ..utils import utils
 
 
 def sample_farthest_points(pts, k, return_index=False):
@@ -124,7 +125,9 @@ def get_mvp_from_w2c(w2c, crop_fov_approx, znear=0.1, zfar=1000.0):
 def get_camera_extrinsics_and_mvp_from_pose(
     pose, crop_fov_approx, znear=0.1, zfar=1000.0, cam_pos_z_offset=0
 ):
-    w2c, campos = get_camera_extrinsics_from_pose(pose, cam_pos_z_offset)
+    w2c, campos = get_camera_extrinsics_from_pose(
+        pose, cam_pos_z_offset=cam_pos_z_offset
+    )
     mvp = get_mvp_from_w2c(w2c, crop_fov_approx, znear, zfar)
 
     return mvp, w2c, campos
@@ -134,3 +137,14 @@ def project_points(v_pos, mvp):
     v_pos_clip4 = renderutils.xfm_points(v_pos, mvp)
     v_pos_uv = v_pos_clip4[..., :2] / v_pos_clip4[..., 3:]
     return v_pos_uv
+
+
+def blender_camera_matrix_to_magicpony_pose(camera_matrix):
+    # convert the camera matrix from Blender to OpenGL coordinate system
+    camera_matrix = utils.blender_to_opengl(camera_matrix)
+    # convert the camera matrix to view matrix
+    view_matrix = camera_matrix.inverse()
+    # magicpony pose is the transpose of the view matrix
+    pose = view_matrix.transpose(2, 1)
+    pose = pose[:, :, :3].reshape(camera_matrix.shape[0], -1)
+    return pose
