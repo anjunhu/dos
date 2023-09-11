@@ -64,6 +64,7 @@ class ImageDataset(Dataset):
         # init the loaders and transforms
         self.attribute_loaders = {
             "image": ImageLoader(image_size=image_size),
+            "background": ImageLoader(image_size=image_size),
             "mask": MaskLoader(image_size=image_size, mask_threshold=mask_threshold),
             "camera_matrix": TxtLoader(),
             "pose": TxtLoader(),

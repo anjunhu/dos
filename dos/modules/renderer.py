@@ -67,6 +67,9 @@ class Renderer(object):
         batch_size = len(mvp)
         if background is None:
             background = torch.zeros((batch_size, h, w, 3), device=mvp.device)
+        else:
+            # expects channels last
+            background = background.permute(0, 2, 3, 1)
 
         frame_rendered = render.render_mesh(
             self.glctx,

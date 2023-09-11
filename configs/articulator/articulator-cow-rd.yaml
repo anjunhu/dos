@@ -8,6 +8,8 @@ train_dataset:
       suffix: _rgb.png
     - name: mask
       suffix: _mask.png
+    - name: background
+      suffix: _background.png
     - name: camera_matrix
       suffix: _camera.txt
 

@@ -127,11 +127,17 @@ class Articulator(BaseModel):
                 batch["camera_matrix"]
             )
 
+        if "background" in batch:
+            background = batch["background"]
+        else:
+            background = None
+
         renderer_outputs = self.renderer(
             articulated_mesh,
             material=material,
             pose=pose,
             im_features=texture_features,
+            background=background,
         )
 
         # compute_correspondences for keypoint loss
