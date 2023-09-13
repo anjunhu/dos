@@ -19,5 +19,8 @@ if __name__ == "__main__":
         config = OmegaConf.merge(config, config_secondary)
 
     trainer = instantiate(config)
+    
+    # It converts the merged configuration config into a regular Python dictionary (config_dict). 
+    # The resolve=True parameter ensures that any interpolation or variable references in the configuration are resolved and substituted with their actual values.
     config_dict = OmegaConf.to_container(config, resolve=True)
     trainer.train(config=config_dict)

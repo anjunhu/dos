@@ -25,6 +25,10 @@ model:
     num_leg_bones: 3
     body_bones_type: z_minmax_y+
     temperature: 0.05
+  articulation_predictor:
+    _target_: dos.predictors.articulation_predictor.ArticulationPredictor
+    size_dataset: 49
+    num_bones: 20
 
 
   renderer:
@@ -36,7 +40,7 @@ modules_to_load:
   - name: texture_predictor.net_texture
     path: /scratch/shared/beegfs/tomj/articulator/data/magicpony/netTexture_horse.pth
 
-checkpoint_root_dir: /scratch/shared/beegfs/tomj/articulator/logs
+checkpoint_root_dir: /scratch/shared/beegfs/oishideb/articulator/logs
 experiment_name: articulator-dev-0.1
 
 device: cuda:0
@@ -44,12 +48,12 @@ device: cuda:0
 # num_iterations: 10000
 # resume: True
 
-learning_rate: 1e-4
+learning_rate: 0.9
 
 # for debugging
-num_iterations: 40
-# num_vis_iterations: 10
-# num_eval_iterations: 10
+num_iterations: 100
+num_vis_iterations: 10
+num_eval_iterations: 10
 # save_checkpoint_freq: 10
 num_workers: 0
-batch_size: 2
+batch_size: 12

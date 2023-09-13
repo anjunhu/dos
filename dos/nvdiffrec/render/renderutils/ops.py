@@ -509,7 +509,8 @@ class _xfm_func(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dout):
-        points, matrix = ctx.saved_variables
+        #points, matrix = ctx.saved_variables
+        points, matrix = ctx.saved_tensors
         return (_get_plugin().xfm_bwd(points, matrix, dout, ctx.isPoints),) + (None, None, None)
 
 def xfm_points(points, matrix, use_python=False):

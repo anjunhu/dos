@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from einops import repeat
 
+from ..nvdiffrec.render import renderutils
 from ..nvdiffrec.render import util as render_util
 
 
@@ -127,3 +128,9 @@ def get_camera_extrinsics_and_mvp_from_pose(
     mvp = get_mvp_from_w2c(w2c, crop_fov_approx, znear, zfar)
 
     return mvp, w2c, campos
+
+
+def project_points(v_pos, mvp):
+    v_pos_clip4 = renderutils.xfm_points(v_pos, mvp)
+    v_pos_uv = v_pos_clip4[..., :2] / v_pos_clip4[..., 3:]
+    return v_pos_uv
