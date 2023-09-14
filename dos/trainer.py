@@ -21,15 +21,16 @@ import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-
-import neptune
 import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import Dataset
 from tqdm import tqdm
+import neptune
 
 from .utils import utils
+import ipdb
+import matplotlib.pyplot as plt
 
 
 class InfiniteDataset(torch.utils.data.Dataset):
@@ -37,10 +38,11 @@ class InfiniteDataset(torch.utils.data.Dataset):
         self.dataset = dataset
 
     def __getitem__(self, i):
+        # return self.dataset[i % len(self.dataset)]
         return self.dataset[i % len(self.dataset)]
 
     def __len__(self):
-        return 10**7  # a large number
+        return 10**3  # 10**7 a large number
 
 
 @dataclass
@@ -56,7 +58,7 @@ class Trainer:
     num_eval_iterations: int = 100
     num_vis_iterations: int = 50
     num_log_iterations: int = 10
-    evaluate_num_visuals: int = 10
+    evaluate_num_visuals: int = 12 # changed - before it was 10
     save_checkpoint_freq: int = 200
     device: str = "cuda"
     translation_loss_weight: float = 1.0
@@ -180,32 +182,52 @@ class Trainer:
         log=False,
         visualize=False,
         iteration=None,
-        num_visuals=1,
+        num_visuals=12,
     ):
+        
         # TODO: where it should actually be done
         # non_blocking=True is needed for async data loading
         batch = utils.safe_batch_to_device(batch, self.device, non_blocking=True)
 
         # rotation, translation, forward_aux = self.model(batch)
+        
         model_outputs = self.model(batch)
-        metrics_dict = self.model.get_metrics_dict(model_outputs, batch)
-        loss_dict = self.model.get_loss_dict(model_outputs, batch, metrics_dict)
+        
+        # metrics_dict = self.model.get_metrics_dict(model_outputs, batch)
+        # loss_dict = self.model.get_loss_dict(model_outputs, batch, metrics_dict)
+        loss_dict = self.model.get_loss_dict(model_outputs, batch)
+        
 
         if visualize:
+            
             num_visuals = min(num_visuals, len(batch["image"]))
-            visuals_dict = self.model.get_visuals_dict(
-                model_outputs, batch, num_visuals=num_visuals
-            )
-            for visual_name, visual in visuals_dict.items():
-                neptune_run[log_prefix + "/" + visual_name].append(
-                    visual, step=iteration
-                )
+            
+            """
+            batch.keys() are dict_keys(['mesh', 'image', 'mask', 'pose', 'texture_features', 'name'])
+            model_outputs.keys() are dict_keys(['image_pred', 'mask_pred', 'albedo', 'shading', 'rendered_kps', 'rendered_image_with_kps', 'target_image_with_kps', 'target_corres_kps'])
+            visuals_dict.keys() are dict_keys(['image', 'image_pred'])
+            """
+            
+            # visuals_dict = self.model.get_visuals_dict(
+            #     model_outputs, batch, num_visuals=num_visuals
+            # )
+            
+            visuals_dict = {key: model_outputs[key] for key in ['target_image_with_kps', 'rendered_image_with_kps']}
+            
+            for index, (visual_name, visual) in enumerate(visuals_dict.items()):
 
+                visual.save(f'{visual_name}_{index}.png', bbox_inches='tight')                
+                neptune_run[log_prefix + "/" + visual_name].append(visual, step=iteration)
+                
         return loss_dict["loss"]
 
     def evaluate(self, iteration, neptune_run):
         print("Evaluating...")
-        val_batch_size = self.val_batch_size or 2 * self.batch_size
+        
+        print('len of self.val_dataset', len(self.val_dataset))
+        
+        val_batch_size = self.batch_size
+        # val_batch_size = self.val_batch_size or 2 * self.batch_size
         val_loader = torch.utils.data.DataLoader(
             self.val_dataset,
             batch_size=val_batch_size,
@@ -217,7 +239,9 @@ class Trainer:
 
         total_loss = 0
         num_batches = 0
-
+        
+        
+        # len(val_loader) is 13
         for i, batch in tqdm(enumerate(val_loader), total=len(val_loader)):
             if i == 0:
                 visualize = True
@@ -232,28 +256,36 @@ class Trainer:
                 num_visuals=self.evaluate_num_visuals,
             )
             total_loss += loss
+            print('loss', loss)
             num_batches += 1
 
         # Compute average validation loss
         avg_loss = total_loss / num_batches
-        neptune_run["val/loss"].append(value=avg_loss, step=iteration)
+        neptune_run["val/loss"].append(value=avg_loss, step=iteration) # ORIGINAL CODE
+        
+        #with neptune.create_experiment() as neptune_run:                                                   # ADDED
+        #    neptune_run.set_property('parameter-3', ["val/loss"].append(value=avg_loss, step=iteration))   # ADDED
 
     def train(self, config=None):
-        """sa
+        print("Training...")
+        """
         config: dict TODO: config for logging, might be better to move it to elsewhere
         """
         # set random seed
         torch.manual_seed(0)
         np.random.seed(0)
 
-        # Initialize Neptune logger
+        # Initialize Neptune logger                  
         neptune_run = neptune.init_run(
             project=self.neptune_project,
             api_token=self.neptune_api_token,
         )  # your credentials
-        if config is not None:
-            neptune_run["parameters"] = config
-
+            
+        # COMMENTED
+        # if config is not None:
+        #     neptune_run["parameters"] = config
+            
+        
         train_loader = torch.utils.data.DataLoader(
             self.train_dataset,
             batch_size=self.batch_size,
@@ -265,6 +297,8 @@ class Trainer:
 
         # Define optimizer
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        
+        # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
 
         start_total_iter = 0
         # resume from checkpoint
@@ -284,9 +318,10 @@ class Trainer:
             return
 
         self.model.train()
+        
 
         # Training loop
-        for run_iteration, batch in enumerate(train_loader):
+        for run_iteration, batch in tqdm(enumerate(train_loader)):
             iteration = start_total_iter + run_iteration
 
             if iteration % self.save_checkpoint_freq == 0 and iteration > 0:
@@ -303,7 +338,10 @@ class Trainer:
                 log_prefix="train",
                 visualize=visualize,
                 iteration=iteration,
+                
             )
+            
+            
             # Backpropagation and optimization step
             optimizer.zero_grad()
             if loss.requires_grad:
@@ -313,8 +351,11 @@ class Trainer:
             optimizer.step()
 
             print(f"iter: {iteration}, loss: {loss.item():.4f}")
-            if iteration % self.num_log_iterations == 0:
-                neptune_run["train/loss"].append(value=loss.item(), step=iteration)
+            if iteration % self.num_log_iterations == 0:   # ORIGINAL CODE
+                neptune_run["train/loss"].append(value=loss.item(), step=iteration) # ORIGINAL CODE
+                
+                #with neptune.create_experiment() as neptune_run:  # ADDED
+                #    neptune_run.set_property('parameter-4', ["train/loss"].append(value=loss.item(), step=iteration)) # ADDED
 
             # Evaluate the model
             if iteration % self.num_eval_iterations == 0:
