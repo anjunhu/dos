@@ -420,7 +420,7 @@ class Articulator(BaseModel):
         self.path_to_save_images = path_to_save_images
         
         self.cache_dir = cache_dir
-        print('self.cache_dir', self.cache_dir)
+    
         self.stable_Diffusion_Text_to_Target_Img = Stable_Diffusion_Text_to_Target_Img(cache_dir = self.cache_dir)
         
 

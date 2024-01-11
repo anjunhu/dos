@@ -35,7 +35,7 @@ class Stable_Diffusion_Text_to_Target_Img:
     def __init__(
         self,
         cache_dir=None,
-        init_image_path=None, 
+        init_image_path=None,
         output_dir = "sd_sds_output",
         vis_name = "cow-sds_latent-l2_image-600-lr1e-1.jpg", 
         prompts = ["a running cow"], 

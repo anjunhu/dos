@@ -1,19 +1,8 @@
+##------- CODE taken from the "Tale of 2 Features" paper (https://github.com/Junyi42/sd-dino/blob/master/pck_spair_pascal.py), 
+##------- some modification has been added to adapt to our project.----------------------------------------------------------
+
 import sys
 import os
-
-
-# #sys.path.append(/dos/components/fuse/extractor_dino)
-
-# # Get the directory of the current file (examples/your_script.py)
-# current_dir = os.getcwd()
-# print(current_dir)
-# # Get the parent directory (dos/)
-# parent_dir = os.path.dirname(current_dir)
-# print(parent_dir)
-
-# # Add the parent directory to sys.path
-# sys.path.append(current_dir)
-
 import torch
 from dos.components.fuse.extractor_dino import ViTExtractor
 from dos.components.fuse.extractor_sd import process_features_and_mask, get_mask
@@ -24,13 +13,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn.functional as F
 from PIL import Image, ImageDraw, ImageFont
-
 import ipdb
 import time
 
-# from transformers import logging
-# # suppress partial model loading warning
-# logging.set_verbosity_error()
 
 NOT_FUSE = False
 ONLY_DINO = False
@@ -40,14 +25,14 @@ DINOV2 = False if DINOV1 else True
 CO_PCA_DINO = 0
 CO_PCA = True
 
-MODEL_SIZE = 'small' # previously 'base'
+MODEL_SIZE = 'base' 
 TEXT_INPUT = False
 EDGE_PAD = False
 # set true to use the raw features from sd
 RAW = False
 # the dimensions of the three groups of sd features
 PCA_DIMS =[256, 256, 256]
-# first three corresponde to three layers for the sd features, and the last two for the ensembled sd/dino features
+# first three correspond to three layers for the sd features, and the last two for the ensembled sd/dino features
 WEIGHT =[1,1,1,1,1]
 MASK = False
 
@@ -56,15 +41,6 @@ SIZE=960; # image size for the sd input # ORIGINAL CODE
 TIMESTEP = 100; # timestep for diffusion, [0, 1000], 0 for no noise added
 INDICES=[2,5,8,11] # select different layers of sd features, only the first three are used by default
 
-# from dos.components.fuse.extractor_sd import load_model
-
-# start_time = time.time()
-# model, aug = load_model(config_path ='Panoptic/odise_label_coco_50e.py', diffusion_ver=VER, image_size=SIZE, num_timesteps=TIMESTEP, block_indices=tuple(INDICES))    
-
-# end_time = time.time()  # Record the end time
-# with open('log.txt', 'a') as file:
-#     file.write(f"The Fuse model loading took {end_time - start_time} seconds to run.\n")
-
 
 # # Ensure to set the model to evaluation mode if you're doing inference
 # sd_model.eval()
@@ -72,11 +48,7 @@ INDICES=[2,5,8,11] # select different layers of sd features, only the first thre
 def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, files=None, category='horse', mask=False, dist='l2', thresholds=None, real_size=960):  # kps,
     # print('compute_correspondences func is running...')
     
-    # img1.save(f'/users/oishideb/dos_output_files/cow/img_rendered_original.png', bbox_inches='tight')
-    # print('Print img1_kps', img1_kps)
-    
-    img_size = 840 if DINOV2 else 240 if ONLY_DINO else 480    # ORIGINAL CODE # Ques: should it be 224 or 240, because 60 * stride(i.e 4) is 240
-    # print('img_size is', img_size)
+    img_size = 840 if DINOV2 else 240 if ONLY_DINO else 480    # ORIGINAL CODE # should it be 224 or 240, because 60 * stride(i.e 4) is 240
     
     model_dict={'small':'dinov2_vits14',
                 'base':'dinov2_vitb14',
@@ -104,10 +76,7 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
     print(f'The ViTExtractor function took {end_time - start_time} seconds to run.')
         
     patch_size = extractor.model.patch_embed.patch_size[0] if DINOV2 else extractor.model.patch_embed.patch_size
-    num_patches = int(patch_size / stride * (img_size // patch_size - 1) + 1)
-
-    # print('patch_size', patch_size) # 
-    # print('num_patches', num_patches) # num_patches is 60
+    num_patches = int(patch_size / stride * (img_size // patch_size - 1) + 1)   # num_patches is 60
     
     input_text = "a photo of "+category if TEXT_INPUT else None
 
@@ -118,80 +87,33 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
         thresholds = torch.tensor(thresholds).to(device)
         bbox_size=[]
         
-    # N = len(files) // 2
-    # N = len(img1)
-    N = 1
-    
-    #pbar = tqdm(total=N)
-    
-    # # COORDINATES FOR input_view_textured-2_frames/frame0
-    #                                # tail (red)         # knee1 (yellow)     # hoof1 (blue)      # knee2 (green)       # hoof2 (pink)              # knee3 (indigo)
-    # img1_kps = torch.FloatTensor([(200.00, 300.00, 1), (195.00, 570.00, 1), (180.00, 700.00, 1), (295.00, 570.00, 1), (300.00, 700.00, 1), (445.00, 660.00, 1), 
-    #                               # hoof3 (orange)      # knee4 (cyan)      # hoof4 (darkgreen)    # eye                  # mouth 
-    #                               (450.00, 760.00, 1), (515.00, 660.00, 1), (520.00, 760.00, 1), (700.00, 260.00, 1), (760.00, 340.00, 1)])
-    
-    # COORDINATES FOR input_view_textured-3_frames/frame9
-    #                                 # eye (red)         # knee1 (yellow)     # hoof1 (blue)      # knee2 (lightgreen)   # hoof2 (pink)        # knee3 (purple)
-    # img1_kps = torch.FloatTensor([(90.00, 300.00, 1), (215.00, 605.00, 1), (170.00, 700.00, 1), (335.00, 590.00, 1), (355.00, 700.00, 1), (730.00, 550.00, 1), 
-    #                             # hoof3 (orange)      # knee4 (cyan)      # hoof4 (darkgreen)    # tail (maroon)      # mouth (white) 
-    #                             (600.00, 680.00, 1), (650.00, 570.00, 1), (765.00, 660.00, 1), (700.00, 300.00, 1), (35.00, 395.00, 1)])
-    
-    # # COORDINATES FOR input_view_textured-1_frames/frame21
-    #                                 # eye (red)         # knee1 (yellow)     # hoof1 (blue)      # knee2 (lightgreen)   # hoof2 (pink)        # knee3 (purple)
-    # img1_kps = torch.FloatTensor([(110.00, 200.00, 1), (290.00, 590.00, 1), (290.00, 680.00, 1), (335.00, 590.00, 1), (370.00, 670.00, 1), (615.00, 610.00, 1), 
-    #                             # hoof3 (orange)      # knee4 (cyan)      # hoof4 (darkgreen)    # tail (maroon)      # mouth (white) 
-    #                             (530.00, 735.00, 1), (550.00, 610.00, 1), (620.00, 745.00, 1), (615.00, 315.00, 1), (60.00, 300.00, 1)])
-    
-    #print('img1_kps shape', img1_kps.shape)
-    
-    """ COMMENTED OUT
-    img1 = Image.open(files[0]).convert('RGB')
-    img1_input = resize(img1, real_size, resize=True, to_pil=True, edge=EDGE_PAD)
-    img1 = resize(img1, img_size, resize=True, to_pil=True, edge=EDGE_PAD)
-    #print('img_size', img_size) """ 
+    # N = 1
 
-            
     fig_list = []
     output_dict={}
     
-    #for index in range(N):
-    
     # Load image 1
-    #img1 = Image.open(files[2*pair_idx]).convert('RGB')
-    img1_input = resize(img1, real_size, resize=True, to_pil=True, edge=EDGE_PAD) # this is the sd - img size used is 960*960
+    img1_input = resize(img1, real_size, resize=True, to_pil=True, edge=EDGE_PAD) # this is for sd - img size used is 960*960
     img1 = resize(img1, img_size, resize=True, to_pil=True, edge=EDGE_PAD)        # this is for DINO - img size used is 840*840
-    # img1_kps = kps[2*pair_idx] 
     
     # Get patch index for the keypoints
     # img1_kps should be 2D [(num of kps)20,2]
     print('img1_kps.shape', img1_kps.shape)
     print('img1_kps[0].shape', img1_kps[0].shape)
     
+    img1_y = img1_kps[:, 1].cpu()           # ORIGINAL CODE                # img1_kps should be [(num of kps)20,2]
+    img1_x = img1_kps[:, 0].cpu()           # ORIGINAL CODE                # img1_kps should be [(num of kps)20,2]
     
-    img1_y = img1_kps[:, 1].cpu()           # ORIGINAL                    # img1_kps should be [(num of kps)20,2]
-    img1_x = img1_kps[:, 0].cpu()           # ORIGINAL                    # img1_kps should be [(num of kps)20,2]
-    
-    # img1_y, img1_x = img1_kps[0].cpu(), img1_kps[0].cpu()                     
+                        
     img1_y, img1_x = img1_y.detach().numpy(), img1_x.detach().numpy()
     img1_y_patch = (num_patches / img_size * img1_y).astype(np.int32)
     img1_x_patch = (num_patches / img_size * img1_x).astype(np.int32)
     img1_patch_idx = num_patches * img1_y_patch + img1_x_patch
     
     # Load image 2
-    #img2 = Image.open(files[2*pair_idx+1]).convert('RGB')
-    #img2 = Image.open(files[pair_idx]).convert('RGB')
     img2_input = resize(img2, real_size, resize=True, to_pil=True, edge=EDGE_PAD)
     
     img2 = resize(img2, img_size, resize=True, to_pil=True, edge=EDGE_PAD)
-    
-    #img2_kps = kps[2*pair_idx+1]
-    """ COMMENTED OUT
-    # Get patch index for the keypoints
-    img2_y, img2_x = img2_kps[:, 1].numpy(), img2_kps[:, 0].numpy()
-    img2_y_patch = (num_patches / img_size * img2_y).astype(np.int32)
-    img2_x_patch = (num_patches / img_size * img2_x).astype(np.int32)
-    img2_patch_idx = num_patches * img2_y_patch + img2_x_patch """
-    
     
     with torch.no_grad():
         if not CO_PCA:
@@ -217,34 +139,6 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
                 #     file.write(f"The process_features_and_mask function for img 1 took {end_time - start_time} seconds to run.\n")
                 
                 print(f"The process_features_and_mask function for img 1 and 2 took {end_time - start_time} seconds to run.")
-                
-                # print('shape of features1', features1.shape)
-                
-                # start_time = time.time()
-                # # CACHING TARGET IMAGE
-                # features2_cache = {}
-                # def generate_key(aug, img2_input, input_text):
-                # # Create a key based on the inputs
-                # # This needs to be adjusted based on the nature of aug, img2_input, and input_text
-                #     return (str(aug), img2_input.tobytes(), input_text)
-                
-                # key = generate_key(aug, img2_input, input_text)
-
-                # if key in features2_cache:
-                #     features2 = features2_cache[key]
-                # else:
-                #     features2 = process_features_and_mask(model, aug, img2_input, input_text=input_text, mask=False, raw=True)
-                #     features2_cache[key] = features2
-                
-                
-                # # features2 = process_features_and_mask(model, aug, img2_input, input_text=input_text,  mask=False, raw=True)  # features2 is a dict
-                # end_time = time.time()
-                # # # Open a file in append mode
-                # # with open('log.txt', 'a') as file:
-                # #     file.write(f"The process_features_and_mask function for img 2 took {end_time - start_time} seconds to run.\n")
-                
-                # print(f"The process_features_and_mask function for img 2 took {end_time - start_time} seconds to run.")
-                
                 
                 if not RAW:
                     processed_features1, processed_features2 = co_pca(features1, features2, PCA_DIMS)  # processed_features1 shape is torch.Size([1, 768, 60, 60])
@@ -378,8 +272,7 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
         # reshape back
         img2_desc = img2_desc.reshape(1, 1, img2_desc.shape[1], num_patches*num_patches).permute(0,1,3,2)
 
-     
-    # print('img1_desc shape', img1_desc.shape)  # img1_desc shape is torch.Size([1, 1, 3600, 1536]) the image dim is 60 * 60 = 3600, 60 is multiplied with stride 14 = 840 thats why for DINOv2 the input_size is 840
+    # print('img1_desc shape', img1_desc.shape)  # img1_desc shape is torch.Size([1, 1, 3600, 1536]) the image dim is 60 * 60 = 3600, 60 is multiplied with stride 14 = 840, hence for DINOv2 the input_size is 840
     # print('img2_desc shape', img2_desc.shape)  # img2_desc shape is torch.Size([1, 1, 3600, 1536])
     
     # Get similarity matrix
@@ -408,7 +301,7 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
         raise ValueError('Unknown distance metric')
     
     # Get nearest neighors
-    # when doing multi-view, its 'img1_patch_idx shape (10, 2)',
+    # multi-view, its 'img1_patch_idx shape (10, 2)'
     # for one-view, its 'img1_patch_idx shape (1, 2)'
     print('img1_patch_idx shape', img1_patch_idx.shape)
     
@@ -435,7 +328,7 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
     img1_y = kps_1_to_2[:, 1].cpu()             # ORIGINAL
     img1_x = kps_1_to_2[:, 0].cpu()             # ORIGINAL
     
-    #img1_y, img1_x = kps_1_to_2[0].cpu(), kps_1_to_2[0].cpu()                     # img1_kps should be [(num of kps)20,2]
+                         
     img1_y, img1_x = img1_y.detach().numpy(), img1_x.detach().numpy()
     img1_y_patch = (num_patches / img_size * img1_y).astype(np.int32)
     img1_x_patch = (num_patches / img_size * img1_x).astype(np.int32)
@@ -443,25 +336,16 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
     
 
     nn_2_to_1 = torch.argmax(sim_2_to_1[img2_patch_idx], dim=1)
-    # nn_y_patch = nn_1_to_2 // num_patches # this line gives deprecated warning so updated to the below line.
-    nn_y_patch = torch.div(nn_2_to_1, num_patches, rounding_mode='floor')
+    
     nn_x_patch = nn_2_to_1 % num_patches
     nn_x = (nn_x_patch - 1) * stride + stride + patch_size // 2 - .5
     nn_y = (nn_y_patch - 1) * stride + stride + patch_size // 2 - .5
     kps_2_to_1 = torch.stack([nn_x, nn_y]).permute(1, 0)
     
-    #print(f'correspondence kps before {kps_1_to_2} at index {index}')
-    
-    
-    # kps_1_to_2 = kps_1_to_2/256
-    
-    # kps_1_to_2 = kps_1_to_2 * 840
     
     img2 = draw_correspondences_1_image(kps_1_to_2, img2, index=index) #, color = None)
     
     img_cc = draw_correspondences_1_image(kps_2_to_1, img1, index=index)
-    
-    #print(f'correspondence kps after {kps_1_to_2} at index {index}')
     
     # ADDING LOSS VALUE
     # draw = ImageDraw.Draw(img2)
@@ -474,217 +358,12 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
     
     kps_2_to_1 = kps_2_to_1.to(device)
     
-    #  LOSS CALCULATION
-    # loss = F.l1_loss(img1_kps, kps_1_to_2, reduction='mean')
-    # # draw.text((50, 50), f"L1 Loss:{loss}", fill='blue', font = font)
-    # plt.text(80, 0.95, f' Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'black', fontsize ='13')
-    
-    # img2.savefig(f'/users/oishideb/dos_output_files/cow/{index}_target.png', bbox_inches='tight')
-    
-    # target_dict = {'target_image_with_kps': img2,
-    #                'target_corres_kps': kps_1_to_2}
-    
-    
-    # fig = draw_correspondences_1_image(kps_1_to_2[:, [1, 0]], img2, index = pair_idx)
-    # #print('type of fig', type(fig))
-    # fig_list.append(fig)
-    
-    # # if not os.path.exists(f'{save_path}/{category}/{input_image_name}'):
-    # #     os.makedirs(f'{save_path}/{category}/{input_image_name}') 
-    
-    # # fig.savefig(f'{save_path}/{category}/{input_image_name}/{pair_idx}_pred.png', bbox_inches='tight')
-    
-    # print('img_pred_corres.png is saved')
-    # fig.savefig(f'img_pred_corres.png', bbox_inches='tight')
-        
-    # plt.close(fig)
-    # pbar.update(1)
-    
-    # print(torch.hub.get_dir())
-    
     return img2, kps_1_to_2, img_cc, kps_2_to_1
 
 if __name__ == '__main__':
-   
-    # # rendered_image = f"/users/oishideb/dos/image_pred_1.png"
-    # rendered_image = f'/users/oishideb/dos/dos/components/fuse/rendered_image_1.png'
-    
-    # rendered_image = Image.open(rendered_image).convert('RGB')
-
-    # rendered_image = resize(rendered_image, target_res = 840, resize=True, to_pil=True)
-    
-    # #                            # tail (red)         # knee1 (yellow)     # hoof1 (blue)      # knee2 (green)       # hoof2 (pink)         # knee3 (purple)
-    # img1_kps = torch.FloatTensor([(220.00, 350.00, 1), (220.00, 570.00, 1), (225.00, 670.00, 1), (265.00, 570.00, 1), (270.00, 665.00, 1), (480.00, 570.00, 1), 
-    #                             # hoof3 (orange)      # knee4 (cyan)      # hoof4 (darkgreen)    # eye                  # mouth 
-    #                             (480.00, 670.00, 1), (520.00, 570.00, 1), (515.00, 665.00, 1), (700.00, 300.00, 1), (740.00, 370.00, 1)])
-    
-    # img1_kps = torch.FloatTensor([(178.1402, 483.2357),
-    #     (199.5209, 431.7276),
-    #     (312.1386, 449.6690),
-    #     (356.6763, 323.2130),
-    #     (709.4813, 389.7032),
-    #     (615.8895, 375.4554),
-    #     (537.4082, 369.1952),
-    #     (462.3427, 354.3822),
-    #     (241.0816, 649.4577),
-    #     (244.0414, 565.0480),
-    #     (283.2314, 486.0346),
-    #     (508.2957, 638.1734),
-    #     (488.5003, 532.7936),
-    #     (470.0245, 479.3821),
-    #     (507.6972, 626.2050),
-    #     (515.6993, 533.8934),
-    #     (472.0908, 481.2719),
-    #     (255.6483, 643.2755),
-    #     (256.9159, 558.1802),
-    #     (283.2314, 486.0346)])
-    
-    # kps correspond to rendered_image_1_with_kps.png
-    img1_kps_for_rendered_image_1 = torch.FloatTensor([[200.6771, 499.5944],
-        [270.3177, 482.1484],
-        [307.9398, 447.1939],
-        [379.2488, 326.9812],
-        [691.3879, 328.4179],
-        [590.6096, 344.4091],
-        [510.8651, 357.4743],
-        [386.5446, 326.7882],
-        [250.1287, 641.6580],
-        [241.7381, 549.0812],
-        [274.8071, 479.1844],
-        [537.0162, 614.4442],
-        [493.2211, 512.8710],
-        [476.6599, 412.9409],
-        [570.1074, 603.3921],
-        [531.8636, 502.0853],
-        [476.1080, 470.5998],
-        [297.2231, 637.2892],
-        [288.6249, 554.9146],
-        [279.8652, 476.7084]])
-    
-    
-    # kps correspond to img_pred_corres_NEW_1.png
-    img1_kps_for_cycle_correspond_1 = torch.FloatTensor([[244.5000, 440.5000],   
-        [314.5000, 552.5000],
-        [370.5000, 440.5000],
-        [384.5000, 384.5000],
-        [706.5000, 314.5000],
-        [608.5000, 412.5000],
-        [496.5000, 384.5000],
-        [384.5000, 384.5000],
-        [244.5000, 678.5000],
-        [314.5000, 552.5000],
-        [314.5000, 552.5000],
-        [608.5000, 566.5000],
-        [524.5000, 510.5000],
-        [468.5000, 426.5000],
-        [608.5000, 566.5000],
-        [314.5000, 552.5000],
-        [468.5000, 440.5000],
-        [244.5000, 678.5000],
-        [314.5000, 552.5000],
-        [314.5000, 552.5000]])
-    
-    # kps correspond to img_pred_corres_NEW_1.png
-    img1_kps_for_cycle_correspond_5 = torch.FloatTensor([[202.5000, 566.5000],
-        [286.5000, 496.5000],
-        [258.5000, 426.5000],
-        [356.5000, 314.5000],
-        [692.5000, 384.5000],
-        [594.5000, 412.5000],
-        [538.5000, 356.5000],
-        [356.5000, 314.5000],
-        [160.5000, 608.5000],
-        [202.5000, 566.5000],
-        [286.5000, 496.5000],
-        [160.5000, 608.5000],
-        [510.5000, 510.5000],
-        [440.5000, 426.5000],
-        [496.5000, 636.5000],
-        [510.5000, 510.5000],
-        [454.5000, 482.5000],
-        [202.5000, 636.5000],
-        [202.5000, 566.5000],
-        [286.5000, 496.5000]])
-    
-    # img1_kps_fr_erode_mask 
-    img1_kps = torch.FloatTensor([[356.7814, 543.3052],
-        [697.0839, 503.2551],
-        [233.2867, 379.9466],
-        [494.6487, 462.1974],
-        [554.6083, 307.9409],
-        [351.9662, 408.3987],
-        [686.2942, 407.1402],
-        [609.5844, 412.4402],
-        [700.6255, 520.0895],
-        [450.3267, 358.3290],
-        [300.2291, 467.6068],
-        [667.9901, 350.5938],
-        [393.7109, 472.0717],
-        [301.8701, 339.4551],
-        [621.2629, 486.6598],
-        [535.8538, 502.1521],
-        [530.8062, 393.3189],
-        [422.5730, 437.7682],
-        [387.1904, 337.4580],
-        [625.6457, 293.3518],
-        [682.1189, 434.0370],
-        [281.1782, 408.8522],
-        [241.8895, 317.5710],
-        [604.4700, 344.2619],
-        [360.3345, 298.1405],
-        [565.7370, 456.6701],
-        [164.4441, 313.5386],
-        [362.7917, 482.6451],
-        [494.0390, 320.6303],
-        [728.7859, 555.3222],
-        [345.2525, 497.7569]])
-    
-    
-    
-    # Converting to Tensor
-    # # img1_kps = torch.tensor(img1_kps_for_cycle_correspond_1)
-    # img1_kps = torch.tensor(img1_kps_for_cycle_correspond_5)
-    # img1_kps = torch.tensor(img1_kps_fr_erode_mask)
-    
-    # # ORIGINAL RENDERED IMAGE
-    # fig = draw_correspondences_1_image(img1_kps_for_rendered_image_1, rendered_image)
-    # fig.savefig(f'output_folder/rendered_image_1_with_kps.png', bbox_inches='tight')
-    
-    
-    # # For cycle correspondence
-    # fig = draw_correspondences_1_image(img1_kps_fr_erode_mask, rendered_image)
-    # fig.savefig(f'output_folder/img1_kps_for_cycle_correspond.png', bbox_inches='tight')
-    
-    # #target_image = f'/users/oishideb/dos/image_0.png'
-    # target_image = f'/users/oishideb/dos/img_target_Reso_840.png'
-    # target_image = Image.open(target_image).convert('RGB')
-    # target_image = resize(target_image, target_res = 840, resize=True, to_pil=True)
-    
-    # target_image_path = f'/users/oishideb/dos/target_images/'
-    # img_files = [f for f in os.listdir(target_image_path) if f.endswith('.png')]
     
     img_files = [file for file in os.listdir(f'/scratch/shared/beegfs/tomj/projects/articulator/datasets/synth_animals/cow-rd-articulator-v1.0/') if file.endswith('.obj')]
         
-    
-    # keypoints for filename 
-    # # #                            # tail (red)         # knee1 (yellow)     # hoof1 (blue)      # knee2 (green)       # hoof2 (pink)         # knee3 (purple)
-    # img1_kps = torch.FloatTensor([(220.00, 350.00, 1), (220.00, 570.00, 1), (225.00, 670.00, 1), (265.00, 570.00, 1), (270.00, 665.00, 1), (480.00, 570.00, 1), 
-    #                             # hoof3 (orange)      # knee4 (cyan)      # hoof4 (darkgreen)    # eye                  # mouth 
-    #                             (480.00, 670.00, 1), (520.00, 570.00, 1), (515.00, 665.00, 1), (700.00, 300.00, 1), (740.00, 370.00, 1)])
-    
-    # keypoints at 490 * 490 resolution
-    # #                            # tail (red)    # knee1 (yellow)     # hoof1 (blue)  # knee2 (green)     # hoof2 (pink)   # knee3 (purple)
-    # img1_kps = torch.FloatTensor([(220.00, 350.00), (225.00, 570.00), (235.00, 665.00), (260.00, 570.00), (265.00, 650.00), (480.00, 570.00), 
-    #                             # hoof3 (orange)   # knee4 (cyan)    # hoof4 (darkgreen)    # eye        # mouth 
-    #                             (480.00, 670.00), (505.00, 570.00), (510.00, 665.00), (700.00, 300.00), (735.00, 370.00)])
-    
-    # rendered_image_updated = f'/users/oishideb/dos/dos/components/fuse/output_folder/img_pred_corres_NEW_1.png'
-    # rendered_image_updated = Image.open(rendered_image_updated).convert('RGB')
-    
-    # rendered_image_updated = f'/users/oishideb/dos/dos/img_render_kp.png'
-    
-    #rendered_image_updated = f'/users/oishideb/dos_output_files/cow/rendered_img_SAVED/0_rendered_image_vert_fr_mask_2.png'
-    
     rendered_image_updated = f'/users/oishideb/sd-dino/original_rendered_image_only.png'
     
     rendered_image_updated = Image.open(rendered_image_updated).convert('RGB')
@@ -693,15 +372,8 @@ if __name__ == '__main__':
     fig = draw_correspondences_1_image(img1_kps, rendered_image_updated, index=0)
     fig.savefig(f'/users/oishideb/dos_output_files/cow/rendered_image_with_kp.png', bbox_inches='tight')
     
-    
     for index in range(len(img_files)):
-        # # target_image_updated = os.path.join(target_image_path+f'{index}_image_gt_save.png')
         
-        # # For cycle correspondence check
-        # rendered_image_updated = os.path.join(target_image_path+f'{index}_image_gt_save.png')
-        # rendered_image_updated = Image.open(rendered_image_updated).convert('RGB')
-        
-        #target_image_updated = f'/users/oishideb/dos/dos/components/fuse/rendered_image_1.png'
         target_image_updated = f'/scratch/shared/beegfs/tomj/projects/articulator/datasets/synth_animals/cow-rd-articulator-v1.0/{str(index).zfill(6)}_rgb.png'
         target_image_updated = Image.open(target_image_updated).convert('RGB')
         
