@@ -1,8 +1,7 @@
+##------- CODE taken from the "Tale of 2 Features" paper (https://github.com/Junyi42/sd-dino/blob/master/extractor_dino.py), 
+##------- slightly updated to cache the DINO model in memory.----------------------------------------------------------
+
 import os
-
-# # Set TORCH_HOME to a custom directory
-# os.environ['TORCH_HOME'] = '/work/oishideb/cache/torch_hub'
-
 import argparse
 import torch
 import torchvision.transforms
