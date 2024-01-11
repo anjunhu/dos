@@ -1,3 +1,5 @@
+##------- CODE taken from here (https://github.com/tomasjakab/laam/blob/sds-investigation/dos/video3d/diffusion/sd.py), 
+
 import os
 from transformers import CLIPTextModel, CLIPTokenizer, logging
 from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler, DDIMScheduler
@@ -11,35 +13,20 @@ import torch.nn.functional as F
 
 from torch.cuda.amp import custom_bwd, custom_fwd 
 
-# SpecifyGradient is a custom PyTorch autograd function, and its purpose is to allow the explicit specification of gradients for a particular operation in a neural network's computational graph. 
-# This can be useful in situations where we want to have direct control over the gradients that are backpropagated, rather than relying on the standard automatic differentiation.
-# This class is designed to allow a user to specify custom gradients manually.
-# We can directly influence the optimization process by providing specific gradients (gt_grad) that the network should use for updating parameters during training.
 class SpecifyGradient(torch.autograd.Function):
     @staticmethod
     @custom_fwd
-    # gt_grad is ground truth gradient
-    # ctx is a context object that can be used to stash information for backward computation.
     def forward(ctx, input_tensor, gt_grad):
-        # saves gt_grad for use in the backward pass.
         ctx.save_for_backward(gt_grad) 
         
-        # a dummy tensor of zeros, this function seems to be to manipulating gradients rather than computing a meaningful forward output.
         # dummy loss value
         return torch.zeros([1], device=input_tensor.device, dtype=input_tensor.dtype)
 
     @staticmethod
     @custom_bwd
     def backward(ctx, grad):
-        # retrieves the gt_grad tensor saved during the forward pass.
         gt_grad, = ctx.saved_tensors
-        # assuming the first dimension of gt_grad represents the batch size.
         batch_size = len(gt_grad)
-        
-        # This returns the modified gradient. 
-        # The gradient is scaled down by the batch size, and None is returned for the gradient of gt_grad since it's not a learnable parameter.
-        # The division of the gradient by the batch size suggests an attempt to normalize the gradient, 
-        # to avoid gradients becoming too large or too small when the batch size changes.
         return gt_grad / batch_size, None
 
 
@@ -73,7 +60,6 @@ class StableDiffusion(nn.Module):
         print(f'[INFO] loading stable diffusion {model_key}')
 
         # Create model
-        # import ipdb; ipdb.set_trace()
         # cache_dir="/scratch/local/ssd/tomj/cache/huggingface_hub"
         self.vae = AutoencoderKL.from_pretrained(model_key, subfolder="vae", torch_dtype=torch_dtype, cache_dir=cache_dir).to(self.device)
         self.tokenizer = CLIPTokenizer.from_pretrained(model_key, subfolder="tokenizer", cache_dir=cache_dir)
