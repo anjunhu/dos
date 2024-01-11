@@ -1,9 +1,9 @@
-# %%
+##------- CODE partly taken from https://github.com/tomasjakab/laam/blob/sds-investigation/dos/examples/diffusion_sds_example.py
+
 import os
 import torch
 import torchvision
 import numpy as np
-
 from PIL import Image
 from tqdm import tqdm
 from einops import rearrange
@@ -12,16 +12,10 @@ from functools import partial
 from pathlib import Path
 import torchvision.transforms.functional as torchvision_F
 
-
 # add dos to path
 import sys
 sys.path.append('../../dos')
 
-# %%
-# from video3d.diffusion.sd import StableDiffusion
-# from video3d.diffusion.sd import seed_everything
-
-# UNCOMMENT IT LATER
 from dos.components.sd_model_text_to_image.sd import StableDiffusion
 from dos.components.sd_model_text_to_image.sd import seed_everything
 
