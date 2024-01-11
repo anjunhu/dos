@@ -1,3 +1,5 @@
+##------- CODE taken from the "Tale of 2 Features" paper (https://github.com/Junyi42/sd-dino/blob/master/extractor_sd.py).
+
 import itertools
 from contextlib import ExitStack
 import torch
