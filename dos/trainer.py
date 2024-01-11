@@ -15,7 +15,7 @@ classes:
 - Regressor
 
 
-Intantiate with hydra, use neptune.ai for logging.
+Instantiate with hydra, use neptune.ai for logging.
 """
 import warnings
 from dataclasses import dataclass
@@ -27,10 +27,27 @@ from torch import nn
 from torch.utils.data import Dataset
 from tqdm import tqdm
 import neptune
-
+import os
 from .utils import utils
 import ipdb
 import matplotlib.pyplot as plt
+import time
+import timeit
+
+VER = f'v1-5';  # version of diffusion, v1-3, v1-4, v1-5, v2-1-base
+SIZE=960; # image size for the sd input # ORIGINAL CODE
+TIMESTEP = 100; # timestep for diffusion, [0, 1000], 0 for no noise added
+INDICES=[2,5,8,11] # select different layers from the UNet decoder for extracting sd features, only the first three are used by default
+
+from dos.components.fuse.extractor_sd import load_model
+
+start_time = time.time()
+sd_model, sd_aug = load_model(config_path ='Panoptic/odise_label_coco_50e.py', diffusion_ver=VER, image_size=SIZE, num_timesteps=TIMESTEP, block_indices=tuple(INDICES))    
+
+end_time = time.time()  # Record the end time
+with open('log.txt', 'a') as file:
+    file.write(f"The Fuse model loading took {end_time - start_time} seconds to run.\n")
+    
 
 
 class InfiniteDataset(torch.utils.data.Dataset):
@@ -38,7 +55,6 @@ class InfiniteDataset(torch.utils.data.Dataset):
         self.dataset = dataset
 
     def __getitem__(self, i):
-        # return self.dataset[i % len(self.dataset)]
         return self.dataset[i % len(self.dataset)]
 
     def __len__(self):
@@ -50,13 +66,13 @@ class Trainer:
     train_dataset: Dataset
     model: nn.Module
     val_dataset: Optional[Dataset] = None
-    batch_size: int = 32
+    batch_size: int = 12
     val_batch_size: Optional[int] = None
     num_workers: int = 4
     learning_rate: float = 1e-4
     num_iterations: int = 10000
     num_eval_iterations: int = 100
-    num_vis_iterations: int = 50
+    num_vis_iterations: int = 10 # changed - before it was 10
     num_log_iterations: int = 10
     evaluate_num_visuals: int = 12 # changed - before it was 10
     save_checkpoint_freq: int = 200
@@ -77,6 +93,7 @@ class Trainer:
     neptune_api_token: Optional[str] = None
 
     def __post_init__(self):
+        print('len of val_dataset', self.val_dataset)
         self.val_dataset = self.val_dataset or self.train_dataset
 
         self.train_dataset_collate_fn = self.train_dataset.collate_fn
@@ -174,34 +191,40 @@ class Trainer:
         #         self.checkpoint_dir, keep_num=self.keep_num_checkpoint
         #     )
 
+    
     def forward(
         self,
         batch,
+        iteration=None,
         neptune_run=None,
         log_prefix=None,
         log=False,
         visualize=False,
-        iteration=None,
         num_visuals=12,
     ):
-        
+        count = 0
         # TODO: where it should actually be done
         # non_blocking=True is needed for async data loading
         batch = utils.safe_batch_to_device(batch, self.device, non_blocking=True)
 
         # rotation, translation, forward_aux = self.model(batch)
         
-        model_outputs = self.model(batch)
+        model_outputs = self.model(batch, sd_model, sd_aug)
         
         # metrics_dict = self.model.get_metrics_dict(model_outputs, batch)
         # loss_dict = self.model.get_loss_dict(model_outputs, batch, metrics_dict)
+        start_time = time.time()
         loss_dict = self.model.get_loss_dict(model_outputs, batch)
         
+        end_time = time.time()  # Record the end time
 
+        with open('log.txt', 'a') as file:
+            file.write(f"The 'get_loss_dict' took {end_time - start_time} seconds to run.\n")
+        
+    
         if visualize:
             
             num_visuals = min(num_visuals, len(batch["image"]))
-            
             """
             batch.keys() are dict_keys(['mesh', 'image', 'mask', 'pose', 'texture_features', 'name'])
             model_outputs.keys() are dict_keys(['image_pred', 'mask_pred', 'albedo', 'shading', 'rendered_kps', 'rendered_image_with_kps', 'target_image_with_kps', 'target_corres_kps'])
@@ -211,23 +234,33 @@ class Trainer:
             # visuals_dict = self.model.get_visuals_dict(
             #     model_outputs, batch, num_visuals=num_visuals
             # )
+           
+            # visuals_dict = {key: model_outputs[key] for key in ['target_image_with_kps', 'rendered_image_with_kps']}
             
-            visuals_dict = {key: model_outputs[key] for key in ['target_image_with_kps', 'rendered_image_with_kps']}
+            # for index, (visual_name, visual) in enumerate(visuals_dict.items()):
+            #     visual.savefig(f'{visual_name}_{index}.png', bbox_inches='tight')                
+            #     neptune_run[log_prefix + "/" + visual_name].append(visual, step=iteration)
             
-            for index, (visual_name, visual) in enumerate(visuals_dict.items()):
-
-                visual.save(f'{visual_name}_{index}.png', bbox_inches='tight')                
-                neptune_run[log_prefix + "/" + visual_name].append(visual, step=iteration)
-                
-        return loss_dict["loss"]
+            start_time = time.time()    
+            for index, visual in enumerate(model_outputs['rendered_image_with_kps']):
+                neptune_run[log_prefix + "/rendered_image_with_kps_"+ str(index)].append(visual, step=iteration)
+                        
+            for index, visual in enumerate(model_outputs['target_image_with_kps']):
+                neptune_run[log_prefix + "/target_image_with_kps_"+ str(index)].append(visual, step=iteration)  
+            
+            end_time = time.time()  # Record the end time
+            with open('log.txt', 'a') as file:
+                file.write(f"The 'neptune logging' took {end_time - start_time} seconds to run.\n")
+            
+        return loss_dict["loss"], model_outputs
+    
 
     def evaluate(self, iteration, neptune_run):
         print("Evaluating...")
-        
-        print('len of self.val_dataset', len(self.val_dataset))
+        print('len of self.val_dataset', len(self.val_dataset))   # its 32
+        # val_batch_size = self.val_batch_size or 2 * self.batch_size
         
         val_batch_size = self.batch_size
-        # val_batch_size = self.val_batch_size or 2 * self.batch_size
         val_loader = torch.utils.data.DataLoader(
             self.val_dataset,
             batch_size=val_batch_size,
@@ -240,14 +273,14 @@ class Trainer:
         total_loss = 0
         num_batches = 0
         
+        # len(val_loader) is 32
         
-        # len(val_loader) is 13
         for i, batch in tqdm(enumerate(val_loader), total=len(val_loader)):
             if i == 0:
                 visualize = True
             else:
                 visualize = False
-            loss = self.forward(
+            loss, model_outputs = self.forward(
                 batch,
                 neptune_run=neptune_run,
                 log_prefix="val",
@@ -256,15 +289,18 @@ class Trainer:
                 num_visuals=self.evaluate_num_visuals,
             )
             total_loss += loss
-            print('loss', loss)
             num_batches += 1
+            
+            if not os.path.exists(f'/users/oishideb/dos_output_files/cow/all_iteration_Val/batch_size_0'):
+                os.makedirs(f'/users/oishideb/dos_output_files/cow/all_iteration_Val/batch_size_0')
+
+            print('iteration num from Val', i)
+            model_outputs["rendered_image_with_kps"][0].savefig(f'/users/oishideb/dos_output_files/cow/all_iteration_Val/batch_size_0/{iteration}_rendered_image_vert_fr_mask.png', bbox_inches='tight')
 
         # Compute average validation loss
         avg_loss = total_loss / num_batches
-        neptune_run["val/loss"].append(value=avg_loss, step=iteration) # ORIGINAL CODE
+        neptune_run["val/loss"].append(value=avg_loss, step=iteration)
         
-        #with neptune.create_experiment() as neptune_run:                                                   # ADDED
-        #    neptune_run.set_property('parameter-3', ["val/loss"].append(value=avg_loss, step=iteration))   # ADDED
 
     def train(self, config=None):
         print("Training...")
@@ -281,11 +317,9 @@ class Trainer:
             api_token=self.neptune_api_token,
         )  # your credentials
             
-        # COMMENTED
-        # if config is not None:
-        #     neptune_run["parameters"] = config
+        if config is not None:
+            neptune_run["parameters"] = config
             
-        
         train_loader = torch.utils.data.DataLoader(
             self.train_dataset,
             batch_size=self.batch_size,
@@ -319,27 +353,70 @@ class Trainer:
 
         self.model.train()
         
-
         # Training loop
+        print('len train_loader', len(train_loader))
         for run_iteration, batch in tqdm(enumerate(train_loader)):
             iteration = start_total_iter + run_iteration
-
+            
+            # This line checks if the current iteration is a multiple of self.save_checkpoint_freq and greater than zero. 
+            # If this condition is met, it means it's time to save a checkpoint. The modulo operator % is used to check if the iteration is divisible by self.save_checkpoint_freq.
             if iteration % self.save_checkpoint_freq == 0 and iteration > 0:
+                # calls the self.save_checkpoint method to save a checkpoint for the current training state. It passes the current iteration number as an argument and 
+                # specifies optim=True to indicate that optimizer state should also be saved.
                 self.save_checkpoint(iteration, optim=True)
 
             if iteration > self.num_iterations:
                 break
 
             visualize = iteration % self.num_vis_iterations == 0
-
-            loss = self.forward(
+            
+            loss, model_outputs = self.forward(
                 batch,
                 neptune_run=neptune_run,
                 log_prefix="train",
                 visualize=visualize,
                 iteration=iteration,
-                
             )
+            
+            keys_list = list(batch.keys())
+            index_of_image = keys_list.index("image")
+
+            save_each_iteration = True
+            if save_each_iteration:
+                start_time = time.time()
+                
+                if not os.path.exists(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/rendered_img'):
+                    os.makedirs(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/rendered_img')
+        
+                model_outputs["rendered_image_with_kps"][0].savefig(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/rendered_img/{iteration}_rendered_image_vert_fr_mask.png', bbox_inches='tight')
+                
+                if not os.path.exists(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/target_img'):
+                    os.makedirs(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/target_img')
+                
+                model_outputs["target_image_with_kps"][0].savefig(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/target_img/{iteration}_target_img.png', bbox_inches='tight')
+                
+                
+                if not os.path.exists(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/cycle_consi'):
+                    os.makedirs(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/cycle_consi')
+                
+                model_outputs["cycle_consi_image_with_kps"][0].savefig(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/cycle_consi/{iteration}_cycle_consi.png', bbox_inches='tight')
+                
+                
+                if not os.path.exists(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/rendered_image_with_kps_list_after_cyc_check'):
+                    os.makedirs(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/rendered_image_with_kps_list_after_cyc_check')
+                
+                model_outputs["rendered_image_with_kps_list_after_cyc_check"][0].savefig(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/rendered_image_with_kps_list_after_cyc_check/{iteration}_rendered_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
+                
+                
+                if not os.path.exists(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/target_image_with_kps_list_after_cyc_check'):
+                    os.makedirs(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/target_image_with_kps_list_after_cyc_check')
+                
+                model_outputs["target_image_with_kps_list_after_cyc_check"][0].savefig(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/target_image_with_kps_list_after_cyc_check/{iteration}_target_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
+                
+                end_time = time.time()  # Record the end time
+
+                with open('log.txt', 'a') as file:
+                    file.write(f"The 'Saving img for every iterations' took {end_time - start_time} seconds to run.\n")
             
             
             # Backpropagation and optimization step
@@ -354,14 +431,12 @@ class Trainer:
             if iteration % self.num_log_iterations == 0:   # ORIGINAL CODE
                 neptune_run["train/loss"].append(value=loss.item(), step=iteration) # ORIGINAL CODE
                 
-                #with neptune.create_experiment() as neptune_run:  # ADDED
-                #    neptune_run.set_property('parameter-4', ["train/loss"].append(value=loss.item(), step=iteration)) # ADDED
-
+            ##  COMMENTED OUT EVALUATION PART
             # Evaluate the model
-            if iteration % self.num_eval_iterations == 0:
-                self.model.eval()
-                self.evaluate(iteration, neptune_run)
-                self.model.train()
+            # if iteration % self.num_eval_iterations == 0:
+            #     self.model.eval()
+            #     self.evaluate(iteration, neptune_run)
+            #     self.model.train()
 
         # Close Neptune logger
         neptune_run.stop()

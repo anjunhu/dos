@@ -25,13 +25,34 @@ sys.path.append('../../dos')
 from dos.components.sd_model_text_to_image.sd import StableDiffusion
 from dos.components.sd_model_text_to_image.sd import seed_everything
 
-
 schedule = np.array([600] * 50).astype('int32')
+device=torch.device('cuda:0')
+optimizer_class=torch.optim.SGD
+torch_dtype=torch.float16
 
 class Stable_Diffusion_Text_to_Target_Img:
-    def __init__(self, device, torch_dtype, cache_dir, output_dir, init_image_path, vis_name, prompts, negative_prompts, mode, optimizer_class, lr, lr_l2, seed, num_inference_steps, guidance_scale, input_image, image_fr_path = False, schedule=schedule):
-        self.device = device
-        self.torch_dtype = torch_dtype
+    
+    def __init__(
+        self,
+        cache_dir=None,
+        init_image_path=None, 
+        output_dir = "sd_sds_output",
+        vis_name = "cow-sds_latent-l2_image-600-lr1e-1.jpg", 
+        prompts = ["a running cow"], 
+        negative_prompts = [" "], 
+        mode = "sds_latent-l2_image", 
+        lr=0.1, 
+        lr_l2=1e4, 
+        seed=2, 
+        num_inference_steps=50, 
+        guidance_scale=100, 
+        schedule=schedule,
+        optimizer_class=optimizer_class,
+        torch_dtype=torch_dtype,
+        # input_image=None,
+        image_fr_path = False
+    ):
+        
         self.cache_dir = cache_dir
         self.output_dir = output_dir
         self.init_image_path = init_image_path
@@ -45,18 +66,22 @@ class Stable_Diffusion_Text_to_Target_Img:
         self.seed = seed
         self.num_inference_steps = num_inference_steps
         self.guidance_scale = guidance_scale
-        self.input_image = input_image
-        self.image_fr_path = image_fr_path
         self.schedule = schedule
-        self.sd = StableDiffusion(device, torch_dtype=torch_dtype, cache_dir=cache_dir)
+        self.torch_dtype = torch_dtype
+        self.sd = StableDiffusion(device, cache_dir, torch_dtype=torch_dtype)
+        # self.input_image = input_image
+        self.image_fr_path = image_fr_path
+        
         seed_everything(self.seed)
 
         
-    def run_experiment(self):
+    def run_experiment(self, input_image, image_fr_path):
         
         # Uses pre-trained CLIP Embeddings
         # Prompts -> text embeds
         # SHAPE OF text_embeddings [2, 77, 768]
+        print('self.prompts', self.prompts)
+        print('self.negative_prompts', self.negative_prompts)
         text_embeddings = self.sd.get_text_embeds(self.prompts, self.negative_prompts) 
 
         # init img
@@ -88,13 +113,13 @@ class Stable_Diffusion_Text_to_Target_Img:
         
         else:    
             # Newly Added
-            print('self.input_image.shape', self.input_image.shape)
-            img = self.input_image
+            print('input_image.shape', input_image.shape)
+            img = input_image
             img = img[None].repeat(text_embeddings.shape[0] // 2, 1, 1, 1)
             print('img.shape', img.shape)
             pred_rgb = img   
          
-        pred_rgb = pred_rgb.to(self.sd.device).detach().clone().requires_grad_(True)
+        pred_rgb = pred_rgb.to(device).detach().clone().requires_grad_(True)
 
 
         def image_to_latents(pred_rgb):
@@ -229,14 +254,14 @@ if __name__ == '__main__':
         output_dir='output-new',
         init_image_path='/users/oishideb/laam/dos/examples/data/cow.png',
         vis_name='cow-sds_latent-l2_image-600-lr1e-1.png',
-        prompts=['a running cow'],
-        negative_prompts=[''],
+        prompts=["a running cow"],
+        negative_prompts=[" "],
         mode="sds_latent-l2_image",
         optimizer_class=torch.optim.SGD,
         lr=0.1,
         lr_l2=1e4,
         seed=2,
-        num_inference_steps=8,
+        num_inference_steps=50,
         guidance_scale=100,
         image_fr_path = True,
         input_image = None,

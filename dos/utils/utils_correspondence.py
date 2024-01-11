@@ -1,7 +1,8 @@
+# From sd-dino Repo
 import torch
 import torch.nn.functional as F
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from typing import List, Tuple
@@ -9,7 +10,6 @@ import faiss
 import cv2
 import os
 from matplotlib.patches import ConnectionPatch
-
 
 def resize(img, target_res, resize=True, to_pil=True, edge=False):
     original_width, original_height = img.size
@@ -33,7 +33,7 @@ def resize(img, target_res, resize=True, to_pil=True, edge=False):
     else:
         if original_height <= original_width:
             if resize:
-                img = img.resize((target_res, int(np.around(target_res * original_height / original_width))), Image.LANCZOS) # Image.Resampling.LANCZOS
+                img = img.resize((target_res, int(np.around(target_res * original_height / original_width))), Image.Resampling.LANCZOS) # Image.Resampling.LANCZOS
             width, height = img.size
             img = np.asarray(img)
             top_pad = (target_res - height) // 2
@@ -41,7 +41,7 @@ def resize(img, target_res, resize=True, to_pil=True, edge=False):
             img = np.pad(img, pad_width=[(top_pad, bottom_pad), (0, 0), (0, 0)], mode='edge')
         else:
             if resize:
-                img = img.resize((int(np.around(target_res * original_width / original_height)), target_res), Image.LANCZOS) # Image.Resampling.LANCZOS
+                img = img.resize((int(np.around(target_res * original_width / original_height)), target_res), Image.Resampling.LANCZOS) # Image.Resampling.LANCZOS
             width, height = img.size
             img = np.asarray(img)
             left_pad = (target_res - width) // 2
@@ -51,10 +51,6 @@ def resize(img, target_res, resize=True, to_pil=True, edge=False):
     if to_pil:
         canvas = Image.fromarray(canvas)
     return canvas
-
-
-
-
 
 
 def find_nearest_patchs(mask1, mask2, image1, image2, features1, features2, mask=False, resolution=None, edit_image=None):
@@ -164,64 +160,64 @@ def find_nearest_patchs(mask1, mask2, image1, image2, features1, features2, mask
     return nearest_patches_image, resized_image2, nearest_patches
 
 
-# def find_nearest_patchs_replace(mask1, mask2, image1, image2, features1, features2, mask=False, resolution=128, draw_gif=False, save_path=None, gif_reverse=False):
+def find_nearest_patchs_replace(mask1, mask2, image1, image2, features1, features2, mask=False, resolution=128, draw_gif=False, save_path=None, gif_reverse=False):
     
-#     if resolution is not None: # resize the feature map to the resolution
-#         features1 = F.interpolate(features1, size=resolution, mode='bilinear')
-#         features2 = F.interpolate(features2, size=resolution, mode='bilinear')
+    if resolution is not None: # resize the feature map to the resolution
+        features1 = F.interpolate(features1, size=resolution, mode='bilinear')
+        features2 = F.interpolate(features2, size=resolution, mode='bilinear')
     
-#     # resize the image to the shape of the feature map
-#     resized_image1 = resize(image1, features1.shape[2], resize=True, to_pil=False)
-#     resized_image2 = resize(image2, features2.shape[2], resize=True, to_pil=False)
+    # resize the image to the shape of the feature map
+    resized_image1 = resize(image1, features1.shape[2], resize=True, to_pil=False)
+    resized_image2 = resize(image2, features2.shape[2], resize=True, to_pil=False)
 
-#     if mask: # mask the features
-#         resized_mask1 = F.interpolate(mask1.cuda().unsqueeze(0).unsqueeze(0).float(), size=features1.shape[2:], mode='nearest')
-#         resized_mask2 = F.interpolate(mask2.cuda().unsqueeze(0).unsqueeze(0).float(), size=features2.shape[2:], mode='nearest')
-#         features1 = features1 * resized_mask1.repeat(1, features1.shape[1], 1, 1)
-#         features2 = features2 * resized_mask2.repeat(1, features2.shape[1], 1, 1)
-#         # set where mask==0 a very large number
-#         features1[(features1.sum(1)==0).repeat(1, features1.shape[1], 1, 1)] = 100000
-#         features2[(features2.sum(1)==0).repeat(1, features2.shape[1], 1, 1)] = 100000
+    if mask: # mask the features
+        resized_mask1 = F.interpolate(mask1.cuda().unsqueeze(0).unsqueeze(0).float(), size=features1.shape[2:], mode='nearest')
+        resized_mask2 = F.interpolate(mask2.cuda().unsqueeze(0).unsqueeze(0).float(), size=features2.shape[2:], mode='nearest')
+        features1 = features1 * resized_mask1.repeat(1, features1.shape[1], 1, 1)
+        features2 = features2 * resized_mask2.repeat(1, features2.shape[1], 1, 1)
+        # set where mask==0 a very large number
+        features1[(features1.sum(1)==0).repeat(1, features1.shape[1], 1, 1)] = 100000
+        features2[(features2.sum(1)==0).repeat(1, features2.shape[1], 1, 1)] = 100000
     
-#     features1_2d = features1.reshape(features1.shape[1], -1).permute(1, 0)
-#     features2_2d = features2.reshape(features2.shape[1], -1).permute(1, 0)
+    features1_2d = features1.reshape(features1.shape[1], -1).permute(1, 0)
+    features2_2d = features2.reshape(features2.shape[1], -1).permute(1, 0)
 
-#     resized_image1 = torch.tensor(resized_image1).to("cuda").float()
-#     resized_image2 = torch.tensor(resized_image2).to("cuda").float()
+    resized_image1 = torch.tensor(resized_image1).to("cuda").float()
+    resized_image2 = torch.tensor(resized_image2).to("cuda").float()
 
-#     mask1 = F.interpolate(mask1.cuda().unsqueeze(0).unsqueeze(0).float(), size=resized_image1.shape[:2], mode='nearest').squeeze(0).squeeze(0)
-#     mask2 = F.interpolate(mask2.cuda().unsqueeze(0).unsqueeze(0).float(), size=resized_image2.shape[:2], mode='nearest').squeeze(0).squeeze(0)
+    mask1 = F.interpolate(mask1.cuda().unsqueeze(0).unsqueeze(0).float(), size=resized_image1.shape[:2], mode='nearest').squeeze(0).squeeze(0)
+    mask2 = F.interpolate(mask2.cuda().unsqueeze(0).unsqueeze(0).float(), size=resized_image2.shape[:2], mode='nearest').squeeze(0).squeeze(0)
 
-#     # Mask the images
-#     resized_image1 = resized_image1 * mask1.unsqueeze(-1).repeat(1, 1, 3)
-#     resized_image2 = resized_image2 * mask2.unsqueeze(-1).repeat(1, 1, 3)
-#     # Normalize the images to the range [0, 1]
-#     resized_image1 = (resized_image1 - resized_image1.min()) / (resized_image1.max() - resized_image1.min())
-#     resized_image2 = (resized_image2 - resized_image2.min()) / (resized_image2.max() - resized_image2.min())
+    # Mask the images
+    resized_image1 = resized_image1 * mask1.unsqueeze(-1).repeat(1, 1, 3)
+    resized_image2 = resized_image2 * mask2.unsqueeze(-1).repeat(1, 1, 3)
+    # Normalize the images to the range [0, 1]
+    resized_image1 = (resized_image1 - resized_image1.min()) / (resized_image1.max() - resized_image1.min())
+    resized_image2 = (resized_image2 - resized_image2.min()) / (resized_image2.max() - resized_image2.min())
 
-#     distances = torch.cdist(features1_2d, features2_2d)
-#     nearest_patch_indices = torch.argmin(distances, dim=1)
-#     nearest_patches = torch.index_select(resized_image2.cuda().clone().detach().reshape(-1, 3), 0, nearest_patch_indices)
+    distances = torch.cdist(features1_2d, features2_2d)
+    nearest_patch_indices = torch.argmin(distances, dim=1)
+    nearest_patches = torch.index_select(resized_image2.cuda().clone().detach().reshape(-1, 3), 0, nearest_patch_indices)
 
-#     nearest_patches_image = nearest_patches.reshape(resized_image1.shape)
+    nearest_patches_image = nearest_patches.reshape(resized_image1.shape)
 
-#     if draw_gif:
-#         assert save_path is not None, "save_path must be provided when draw_gif is True"
-#         img_1 = resize(image1, features1.shape[2], resize=True, to_pil=True)
-#         img_2 = resize(image2, features2.shape[2], resize=True, to_pil=True)
-#         mapping = torch.zeros((img_1.size[1], img_1.size[0], 2))
-#         for i in range(len(nearest_patch_indices)):
-#             mapping[i // img_1.size[0], i % img_1.size[0]] = torch.tensor([nearest_patch_indices[i] // img_2.size[0], nearest_patch_indices[i] % img_2.size[0]])
-#         animate_image_transfer(img_1, img_2, mapping, save_path) if gif_reverse else animate_image_transfer_reverse(img_1, img_2, mapping, save_path)
+    if draw_gif:
+        assert save_path is not None, "save_path must be provided when draw_gif is True"
+        img_1 = resize(image1, features1.shape[2], resize=True, to_pil=True)
+        img_2 = resize(image2, features2.shape[2], resize=True, to_pil=True)
+        mapping = torch.zeros((img_1.size[1], img_1.size[0], 2))
+        for i in range(len(nearest_patch_indices)):
+            mapping[i // img_1.size[0], i % img_1.size[0]] = torch.tensor([nearest_patch_indices[i] // img_2.size[0], nearest_patch_indices[i] % img_2.size[0]])
+        animate_image_transfer(img_1, img_2, mapping, save_path) if gif_reverse else animate_image_transfer_reverse(img_1, img_2, mapping, save_path)
 
-#     # TODO: upsample the nearest_patches_image to the resolution of the original image
-#     # nearest_patches_image = F.interpolate(nearest_patches_image.permute(2,0,1).unsqueeze(0), size=256, mode='bilinear').squeeze(0).permute(1,2,0)
-#     # resized_image2 = F.interpolate(resized_image2.permute(2,0,1).unsqueeze(0), size=256, mode='bilinear').squeeze(0).permute(1,2,0)
+    # TODO: upsample the nearest_patches_image to the resolution of the original image
+    # nearest_patches_image = F.interpolate(nearest_patches_image.permute(2,0,1).unsqueeze(0), size=256, mode='bilinear').squeeze(0).permute(1,2,0)
+    # resized_image2 = F.interpolate(resized_image2.permute(2,0,1).unsqueeze(0), size=256, mode='bilinear').squeeze(0).permute(1,2,0)
 
-#     nearest_patches_image = (nearest_patches_image).cpu().numpy()
-#     resized_image2 = (resized_image2).cpu().numpy()
+    nearest_patches_image = (nearest_patches_image).cpu().numpy()
+    resized_image2 = (resized_image2).cpu().numpy()
 
-#     return nearest_patches_image, resized_image2, nearest_patches
+    return nearest_patches_image, resized_image2, nearest_patches
 
 def chunk_cosine_sim(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     """ Computes cosine similarity between all possible pairs in two sets of vectors.
@@ -275,73 +271,39 @@ def pairwise_sim(x: torch.Tensor, y: torch.Tensor, p=2, normalize=False) -> torc
     represents the similarity between the i-th token in x and all tokens in y. The output tensor has shape [batch_size, sequence_length, num_token_x]."""
     return torch.stack(result_list, dim=2)
 
-def draw_kp_on_image(kps, img):
-    
-    # Get the colormap
-    
-    cmap = plt.get_cmap('tab20')
-    cmap = ListedColormap(["red", "yellow", "blue", "lime", "magenta", "indigo", "orange", "cyan", "darkgreen",
-                            "maroon", "white", "yellow", "chocolate", "gray", "blueviolet", "pink", "olive", "gold", "navy", "teal"])
-    num_points = len(kps)
-    
-    draw = ImageDraw.Draw(img)
-    # colors = np.array([cmap(x) for x in range(num_points)])
-    
-    for idx, (x, y) in enumerate(kps):
-        # Using modulo to make sure idx is within the range of colormap (if you have more than 10 keypoints)
-        color = tuple(int(c*255) for c in cmap(idx % num_points)[:3])  # Convert color from float (0-1) to int (0-255)
-        draw.ellipse([(x-6, y-6), (x+6, y+6)], fill=color)  # 6 pixels radius circle for each point
-        
-    return img
-
-def draw_lines_on_img(img, kps_img_resolu_bone_1, kps_img_resolu_bone_2):   
-    cmap = ListedColormap(["red", "yellow", "blue", "lime", "magenta", "indigo", "orange", "cyan", "darkgreen",
-                            "maroon", "white", "yellow", "chocolate", "gray", "blueviolet", "pink", "olive", "gold", "navy", "teal"])
-    
-    num_points = len(kps_img_resolu_bone_1)
-             
-    draw = ImageDraw.Draw(img)
-    for idx, (p1, p2) in enumerate(zip(kps_img_resolu_bone_1, kps_img_resolu_bone_2)):
-        (x1, y1) = p1
-        (x2, y2) = p2
-        color = tuple(int(c*255) for c in cmap(idx % num_points)[:3]) 
-        draw.line([(x1, y1), (x2, y2)], fill = color, width=3)
-    return img
-
-
 def draw_correspondences_1_image(points1: List[Tuple[float, float]], image1: Image.Image, index) -> plt.Figure:
 
     num_points = len(points1)
 
     if num_points > 15:
-        cmap = plt.get_cmap('tab10')
+        # cmap = plt.get_cmap('tab10')
+        cmap = plt.get_cmap('viridis')
     else:
         cmap = ListedColormap(["red", "yellow", "blue", "lime", "magenta", "indigo", "orange", "cyan", "darkgreen",
                             "maroon", "white", "black", "chocolate", "gray", "blueviolet"])
-        
-        
     colors = np.array([cmap(x) for x in range(num_points)])
+    colors = cmap(np.linspace(0, 1, num_points))
     radius1, radius2 = 0.03*max(image1.size), 0.01*max(image1.size)
     
     # plot a subfigure put image1 in the top, image2 in the bottom
-    fig, ax1 = plt.subplots(figsize=(image1.size[0]/100, image1.size[1]/100)) # The figsize multiplies the size of the image by 100, therefore diving by 100 to get the original image size
-
+    fig, ax1 = plt.subplots(1, 1, figsize=(10, 5))
     ax1.axis('off')
-    
-    # Set the figure size to 256x256 pixels
-    # fig.set_size_inches(256, 256)
 
-    for point1, color in zip(points1, colors):
-        y1, x1 = point1
-        #circ1_1 = plt.Circle((x1, y1), radius1, facecolor=color, edgecolor='white', alpha=0.5) # is the bigger circle
+    for idx, (point1, color) in enumerate(zip(points1, colors)):
+        #y1, x1 = point1
+        x1, y1  = point1
+        circ1_1 = plt.Circle((x1, y1), radius1, facecolor=color, edgecolor='white', alpha=0.5)
         circ1_2 = plt.Circle((x1, y1), radius2, facecolor=color, edgecolor='white')
         #ax1.add_patch(circ1_1)
         ax1.add_patch(circ1_2)
+        
+        # Adding an integer number next to the point
+        ax1.text(x1 + radius2, y1, str(idx), color='blue', fontsize=10, verticalalignment='center', horizontalalignment='left')
     
-    #ax1.text(0.7, 0.95, f' Frame_{index}', verticalalignment='top', horizontalalignment='center', color = 'white', fontsize ='13', fontweight = 'bold', transform=ax1.transAxes)
+    # ax1.text(0.7, 0.95, f' Frame_{index}', verticalalignment='top', horizontalalignment='center', color = 'black', fontsize ='13', fontweight = 'bold', transform=ax1.transAxes)
     ax1.imshow(image1)
-    #plt.tight_layout()
-
+    plt.tight_layout()
+    
     return fig
 
 

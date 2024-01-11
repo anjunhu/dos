@@ -165,8 +165,6 @@ def build_demo_classes_and_metadata(vocab, label_list):
 
 import sys
 
-# The function loads a pre-trained ODISE model with specific configurations, 
-# sets up augmentations for the test dataset, and returns the model and augmentations for further use.
 
 def load_model(config_path="Panoptic/odise_label_coco_50e.py", seed=42, diffusion_ver="v1-3", image_size=1024, num_timesteps=0, block_indices=(2,5,8,11), decoder_only=True, encoder_only=False, resblock_only=False):
     # This line loads the configuration for the model from the model zoo based on the specified config_path.
@@ -319,9 +317,14 @@ def pca_process(features):
     return features
     
 
-def process_features_and_mask(model, aug, image, category=None, input_text=None, mask=True, pca=False, raw=False):
+#def process_features_and_mask(model, aug, image, category=None, input_text=None, mask=True, pca=False, raw=False):
 
-    input_image = image
+def process_features_and_mask(model, aug, input_image_1, input_image_2, category=None, input_text=None, mask=True, pca=False, raw=False):
+
+    # input_image = image
+    # Added
+    input_image = input_image_1
+    
     caption = input_text
     vocab = ""
     label_list = ["COCO"]
@@ -335,14 +338,30 @@ def process_features_and_mask(model, aug, image, category=None, input_text=None,
         category=category_convert_dict[category]
     elif type(category) is list:
         category=[category_convert_dict[cat] if cat in category_convert_dict else cat for cat in category]
-    features = get_features(model, aug, input_image, vocab, label_list, caption, pca=(pca or raw))
+    # features = get_features(model, aug, input_image, vocab, label_list, caption, pca=(pca or raw))
+    
+    # Updated
+    features_1 = get_features(model, aug, input_image_1, vocab, label_list, caption, pca=(pca or raw))
+    features_2 = get_features(model, aug, input_image_2, vocab, label_list, caption, pca=(pca or raw))
+    
     if pca:
-        features = pca_process(features)
+        # features = pca_process(features)
+        
+        # Updated
+        features_1 = pca_process(features_1)
+        features_2 = pca_process(features_2)
     if raw:
-        return features
-    features_gether_s4_s5 = torch.cat([features['s4'], F.interpolate(features['s5'], size=(features['s4'].shape[-2:]), mode='bilinear')], dim=1)
+        # return features
+        return features_1, features_2
+    
+    # features_gether_s4_s5 = torch.cat([features['s4'], F.interpolate(features['s5'], size=(features['s4'].shape[-2:]), mode='bilinear')], dim=1)
+    
+    features_gether_s4_s5_image_1 = torch.cat([features_1['s4'], F.interpolate(features_1['s5'], size=(features_1['s4'].shape[-2:]), mode='bilinear')], dim=1)
+    features_gether_s4_s5_image_2 = torch.cat([features_2['s4'], F.interpolate(features_2['s5'], size=(features_2['s4'].shape[-2:]), mode='bilinear')], dim=1)
     
     if mask:
+        print('mask is True')
+        
         (pred,classes) =inference(model, aug, input_image, vocab, label_list)
         seg_map=pred['panoptic_seg'][0]
         target_mask_id = []
@@ -362,7 +381,9 @@ def process_features_and_mask(model, aug, image, category=None, input_text=None,
         # set where mask is 0 to inf
         features_gether_s4_s5[(binary_seg_map == 0).repeat(1,features_gether_s4_s5.shape[1],1,1)] = -1
 
-    return features_gether_s4_s5
+    # return features_gether_s4_s5
+    return features_gether_s4_s5_image_1, features_gether_s4_s5_image_2
+
 
 def get_mask(model, aug, image, category=None, input_text=None):
     model.backbone.feature_extractor.decoder_only = False

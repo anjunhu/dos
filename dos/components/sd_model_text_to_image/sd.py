@@ -50,7 +50,7 @@ def seed_everything(seed):
     #torch.backends.cudnn.benchmark = True
 
 class StableDiffusion(nn.Module):
-    def __init__(self, device, sd_version='1.5', hf_key=None, torch_dtype=torch.float32, cache_dir=None):
+    def __init__(self, device, cache_dir=None, sd_version='1.5', hf_key=None, torch_dtype=torch.float32):
         super().__init__()
 
         self.device = device

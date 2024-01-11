@@ -29,7 +29,7 @@ from ..utils import utils
 from dos.components.fuse.compute_correspond import compute_correspondences_sd_dino
 from dos.utils.utils_correspondence import resize, draw_correspondences_1_image #, draw_lines_on_img, plot_points
 
-from ..components.sd_model_text_to_image.diffusion_sds_example import Stable_Diffusion_Text_to_Target_Img
+from ..components.sd_model_text_to_image.diffusion_sds import Stable_Diffusion_Text_to_Target_Img
 
 # UNCOMMENT IT LATER
 # from ..components.DeepFlyod_or_sdXL_text2image_inference import StableDiffusionXL, DeepFloydIF
@@ -387,13 +387,16 @@ class Articulator(BaseModel):
     
     def __init__(
         self,
+        path_to_save_images,
+        cache_dir,
+        stable_Diffusion_Text_to_Target_Img,
         encoder=None,
         enable_texture_predictor=True,
         texture_predictor=None,
         bones_predictor=None,
         articulation_predictor=None,
         renderer=None,
-        shape_template_path=None,
+        shape_template_path=None
     ):
         super().__init__()
         self.encoder = encoder  # encoder TODO: should be part of the predictor?
@@ -413,9 +416,12 @@ class Articulator(BaseModel):
             self.shape_template = self._load_shape_template(shape_template_path)
         else:
             self.shape_template = None
-            
-        # self.stable_Diffusion_Text_to_Target_Img = Stable_Diffusion_Text_to_Target_Img()
         
+        self.path_to_save_images = path_to_save_images
+        
+        self.cache_dir = cache_dir
+        print('self.cache_dir', self.cache_dir)
+        self.stable_Diffusion_Text_to_Target_Img = Stable_Diffusion_Text_to_Target_Img(cache_dir = self.cache_dir)
         
 
     def _load_shape_template(self, shape_template_path):
@@ -611,14 +617,14 @@ class Articulator(BaseModel):
             # rendered_image_PIL is 256*256 (default size)
             rendered_image_PIL = F.to_pil_image(rendered_image[index])
             rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
-            rendered_image_PIL.save(f'/users/oishideb/dos_output_files/cow/{index}_rendered_image_only.png', bbox_inches='tight')
+            rendered_image_PIL.save(f'{self.path_to_save_images}/{index}_rendered_image_only.png', bbox_inches='tight')
             
             eroded_mask_PIL = F.to_pil_image(eroded_mask[index])
             # eroded_mask_PIL = resize(eroded_mask_PIL, target_res = 840, resize=True, to_pil=True)
-            eroded_mask_PIL.save(f'/users/oishideb/dos_output_files/cow/{index}_eroded_mask.png', bbox_inches='tight')
+            eroded_mask_PIL.save(f'{self.path_to_save_images}/{index}_eroded_mask.png', bbox_inches='tight')
             
             #rendered_images_PIL_list.append(rendered_image_PIL)
-            #import ipdb; ipdb.set_trace()
+            
             print('target_image.shape', target_image.shape)
             print('target_image[0].shape', target_image[0].shape)
             target_image_PIL = F.to_pil_image(target_image[0])
@@ -646,7 +652,7 @@ class Articulator(BaseModel):
                 
                 # Set the background color to grey
                 plt.gcf().set_facecolor('grey')
-                rendered_image_with_kps.savefig(f'/users/oishideb/dos_output_files/cow/{index}_rendered_image_vert_fr_mask.png', bbox_inches='tight')
+                rendered_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_rendered_image_vert_fr_mask.png', bbox_inches='tight')
                 
 
             # midpts_in_2D = False
@@ -685,12 +691,12 @@ class Articulator(BaseModel):
 
                 # showing error atm
                 #rendered_image_with_kps = draw_lines_on_img(rendered_image_with_kps, kps_img_resolu_bone_1_projected_in_2D, kps_img_resolu_bone_2_projected_in_2D)
-                #rendered_image_with_kps.save(f'/users/oishideb/dos_output_files/cow/img_render_kps_mid3D{index}.png', bbox_inches='tight')       
+                #rendered_image_with_kps.save(f'{self.path_to_save_images}/img_render_kps_mid3D{index}.png', bbox_inches='tight')       
                 
             # MID-POINTS CLOSEST 
             rendered_image_PIL = F.to_pil_image(rendered_image[index])
             rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
-            rendered_image_PIL.save(f'/users/oishideb/dos_output_files/cow/{index}_rendered_image_only.png', bbox_inches='tight')
+            rendered_image_PIL.save(f'{self.path_to_save_images}/{index}_rendered_image_only.png', bbox_inches='tight')
             
             # kps_img_resolu = (bones_closest_midpts_projected_in_2D_all_kp20[index] + 1) * rendered_image_PIL.size[0]/2
             
@@ -699,10 +705,10 @@ class Articulator(BaseModel):
             # rendered_image_with_kps_2 = draw_correspondences_1_image(img_pixel_reso[index], rendered_image_PIL, index=0) 
             # Set the background color to grey
             # plt.gcf().set_facecolor('grey')
-            # rendered_image_with_kps_2.savefig(f'/users/oishideb/dos_output_files/cow/{index}_rendered_image_with_midpts.png', bbox_inches='tight')
+            # rendered_image_with_kps_2.savefig(f'{self.path_to_save_images}/{index}_rendered_image_with_midpts.png', bbox_inches='tight')
             
             
-            #rendered_image_with_kps_closest.save(f'/users/oishideb/dos_output_files/cow/img_render_kps_NEW{index}.png', bbox_inches='tight') 
+            #rendered_image_with_kps_closest.save(f'{self.path_to_save_images}/img_render_kps_NEW{index}.png', bbox_inches='tight') 
             
             # target_dict = compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_img_resolu_mid_kp20, img2=target_image_PIL, index = index) #[-6:]
             # target_dict = compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_img_resolu_mid_kp20_closest, img2=target_image_PIL, index = index)
@@ -737,13 +743,13 @@ class Articulator(BaseModel):
             # Set the background color to grey
             plt.gcf().set_facecolor('grey')
             plt.text(80, 0.95, f'Rendered Img ; Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
-            rendered_image_with_kps.savefig(f'/users/oishideb/dos_output_files/cow/{index}_rendered_image_with_kps.png', bbox_inches='tight') 
+            rendered_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_rendered_image_with_kps.png', bbox_inches='tight') 
             
             # FIX IT
             # plt.text(80, 0.95, f'Target Img', verticalalignment='top', horizontalalignment='left', color = 'black', fontsize ='11')
             # Set the background color to grey
             plt.gcf().set_facecolor('grey')
-            target_image_with_kps.savefig(f'/users/oishideb/dos_output_files/cow/{index}_target.png', bbox_inches='tight')
+            target_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_target.png', bbox_inches='tight')
                     
             rendered_image_with_kps_list.append(rendered_image_with_kps)
             target_image_with_kps_list.append(target_image_with_kps)
@@ -767,7 +773,7 @@ class Articulator(BaseModel):
             # Set the background color to grey
             plt.gcf().set_facecolor('grey')
             plt.text(80, 0.95, f'Cycle Consistency', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
-            cycle_consi_image_with_kps.savefig(f'/users/oishideb/dos_output_files/cow/{index}_cycle.png', bbox_inches='tight')
+            cycle_consi_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_cycle.png', bbox_inches='tight')
             
             cycle_consi_image_with_kps_list.append(cycle_consi_image_with_kps)
             cycle_consi_kps_tensor_stack = torch.cat((cycle_consi_kps_tensor_stack, cycle_consi_corres_kps.unsqueeze(0)), dim=0)
@@ -791,12 +797,12 @@ class Articulator(BaseModel):
             plt.gcf().set_facecolor('grey')
             plt.text(30, 0.95, f'Final Rendered Img after Eroded Mask & Cycle Consi Check', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
             plt.text(80, 40, f'Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
-            rendered_image_with_kps_cyc_check.savefig(f'/users/oishideb/dos_output_files/cow/{index}_rendered_image_with_kps_after_cyclic_check.png', bbox_inches='tight') 
+            rendered_image_with_kps_cyc_check.savefig(f'{self.path_to_save_images}/{index}_rendered_image_with_kps_after_cyclic_check.png', bbox_inches='tight') 
             
             # Set the background color to grey
             plt.gcf().set_facecolor('grey')    
             target_image_with_kps_cyc_check = draw_correspondences_1_image(corres_target_kps, target_image_PIL, index = 0) #, color='yellow')              #[-6:]
-            target_image_with_kps_cyc_check.savefig(f'/users/oishideb/dos_output_files/cow/{index}_target_image_with_kps_after_cyclic_check.png', bbox_inches='tight') 
+            target_image_with_kps_cyc_check.savefig(f'{self.path_to_save_images}/{index}_target_image_with_kps_after_cyclic_check.png', bbox_inches='tight') 
             plt.close()    
             
             rendered_image_with_kps_list_after_cyc_check.append(rendered_image_with_kps_cyc_check)
@@ -946,34 +952,53 @@ class Articulator(BaseModel):
             
             rendered_image_PIL = F.to_pil_image(renderer_outputs["image_pred"][i])
             #rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
-            rendered_image_PIL.save(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/diff_pose/{i}_diff_pose_rendered_image.png', bbox_inches='tight')
-        
+            dir_path = f'{self.path_to_save_images}/all_iteration_Train/batch_size_0/diff_pose/'
 
-            target_img_fr_sd = Stable_Diffusion_Text_to_Target_Img(
-            device=torch.device('cuda:0'),
-            torch_dtype=torch.float16,
-            cache_dir="/work/oishideb/cache/huggingface_hub",
-            output_dir='output-new',
-            init_image_path='/users/oishideb/laam/dos/examples/data/cow.png',
-            vis_name='cow-sds_latent-l2_image-600-lr1e-1.jpg',
-            prompts=['a running cow'],
-            negative_prompts=[''],
-            mode="sds_latent-l2_image",
-            optimizer_class=torch.optim.SGD,
-            lr=0.1,
-            lr_l2=1e4,
-            seed=2,
-            num_inference_steps= 8,
-            guidance_scale= 100,
-            input_image = renderer_outputs["image_pred"][i]    # At the moment, just taking 1 image from the batch
+            # Create the directory if it doesn't exist
+            os.makedirs(dir_path, exist_ok=True)
+
+            # Save the image
+            rendered_image_PIL.save(f'{dir_path}{i}_diff_pose_rendered_image.png', bbox_inches='tight')
+            
+
+            # target_img_fr_sd = self.stable_Diffusion_Text_to_Target_Img(
+            # cache_dir="/work/oishideb/cache/huggingface_hub",
+            # output_dir='output-new',
+            # init_image_path='/users/oishideb/laam/dos/examples/data/cow.png',
+            # vis_name='cow-sds_latent-l2_image-600-lr1e-1.jpg',
+            # prompts=['a running cow'],
+            # negative_prompts=[''],
+            # mode="sds_latent-l2_image",
+            # lr=0.1,
+            # lr_l2=1e4,
+            # seed=2,
+            # num_inference_steps= 8,
+            # guidance_scale= 100,
+            # device=torch.device('cuda:0'),
+            # optimizer_class=torch.optim.SGD,
+            # torch_dtype=torch.float16,
+            # input_image = renderer_outputs["image_pred"][i],
+            # image_fr_path = False
+            # )
+            
+            target_img_rgb, target_img_decoded = self.stable_Diffusion_Text_to_Target_Img.run_experiment(
+            input_image = renderer_outputs["image_pred"][i],
+            image_fr_path = False
             )
             
-            target_img_rgb, target_img_decoded = target_img_fr_sd.run_experiment()
+            #target_img_rgb, target_img_decoded = target_img_fr_sd.run_experiment()
             
             target_image_PIL = F.to_pil_image(target_img_rgb[0])
             #rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
-            target_image_PIL.save(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/diff_pose/{i}_diff_pose_target_image.png', bbox_inches='tight')
-        
+            
+            dir_path = f'{self.path_to_save_images}/all_iteration_Train/batch_size_0/diff_pose/'
+
+            # Create the directory if it doesn't exist
+            os.makedirs(dir_path, exist_ok=True)
+
+            # Save the image
+            target_image_PIL.save(f'{dir_path}{i}_diff_pose_target_image.png', bbox_inches='tight')
+
             print("target_img_rgb.shape", target_img_rgb.shape)
             target_img_tensor_list.append(target_img_rgb)
             

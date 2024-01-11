@@ -10,7 +10,7 @@ from ..utils import utils
 
 def sample_farthest_points(pts, k, return_index=False):
     b, c, n = pts.shape
-    farthest_pts = torch.zeros((b, 3, k), device=pts.device, dtype=pts.dtype)
+    farthest_pts = torch.zeros((b, 3, k), device=pts.device, dtype=pts.dtype) 
     indexes = torch.zeros((b, k), device=pts.device, dtype=torch.int64)
 
     index = torch.randint(n, [b], device=pts.device)

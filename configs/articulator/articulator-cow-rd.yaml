@@ -1,8 +1,12 @@
-_target_: dos.trainer.Trainer
+_target_: dos.trainer.Trainer # Class Name
 
 train_dataset:
-  _target_: dos.datasets.ImageDataset
-  root_dir: /scratch/shared/beegfs/tomj/projects/articulator/datasets/synth_animals/cow-rd-articulator-v1.0
+  _target_: dos.datasets.ImageDataset       # Class Name
+  root_dir: /scratch/shared/beegfs/oishideb/cow  # sample 1
+  #root_dir: /users/oishideb/generative-models/assets   #/cow_Deep_Floyd_gen_GS_10.png
+  # root_dir: /work/oishideb/cow_sample_2  # sample 2
+  # root_dir: /work/oishideb/cow_dataset/cow_dataset # 9 images
+  # root_dir: /scratch/shared/beegfs/tomj/projects/articulator/datasets/synth_animals/cow-rd-articulator-v1.0  # Corrupted dataset
   attributes:
     - name: image
       suffix: _rgb.png
@@ -13,37 +17,74 @@ train_dataset:
     - name: camera_matrix
       suffix: _camera.txt
 
+
+
 model:
-  _target_: dos.models.articulator.Articulator
+  _target_: dos.models.articulator.Articulator  # Class Name
   bones_predictor:
-    _target_: dos.components.skinning.bones_estimation.BonesEstimator
+    _target_: dos.components.skinning.bones_estimation.BonesEstimator # Class Name
     num_body_bones: 8
     num_leg_bones: 3
     body_bones_type: z_minmax_y+
     temperature: 0.05
-  shape_template_path: /scratch/shared/beegfs/tomj/projects/articulator/data/synth_animals/shape_templates/cow_female-rd/Cow-OBJ-v01/Cow_Highpoly.obj
 
+  path_to_save_images: /work/oishideb/dos_output_files/cow
+  cache_dir: /work/oishideb/cache/huggingface_hub
+  shape_template_path: /scratch/shared/beegfs/tomj/projects/articulator/data/synth_animals/shape_templates/cow_female-rd/Cow-OBJ-v01/Cow_Highpoly.obj
   enable_texture_predictor: False
 
-  renderer:
-    _target_: dos.modules.renderer.Renderer
+  articulation_predictor:
+    _target_: dos.predictors.articulation_predictor.ArticulationPredictor  # Class Name
+    size_dataset: 49
+    num_bones: 20
+    
+  renderer:   # variable Name
+    _target_: dos.modules.renderer.Renderer # Class Name
     cam_pos_z_offset: 0.0
     fov: 28.84 # blender 70 mm focal length, 36 mm sensor width
+
+  stable_Diffusion_Text_to_Target_Img:  # variable Name
+    _target_: dos.components.sd_model_text_to_image.diffusion_sds.Stable_Diffusion_Text_to_Target_Img # Class Name
+     # cache_dir:
+    output_dir: "sd_sds_output"
+    init_image_path: /users/oishideb/laam/dos/examples/data/cow.png
+    vis_name: cow-sds_latent-l2_image-600-lr1e-1.jpg
+    prompts: ["a running cow"]
+    negative_prompts: [" "]
+    mode: sds_latent-l2_image
+    lr: 0.1
+    lr_l2: 1e4
+    seed: 2
+    num_inference_steps: 50
+    guidance_scale: 100
   
-checkpoint_root_dir: /scratch/shared/beegfs/tomj/articulator/logs
+#path_to_save_horse_img: /users/oishideb/dos_output_files/horse/15_Sept
+checkpoint_root_dir: /work/oishideb/articulation_cow_chkpts
 experiment_name: articulator-dev-0.1
 
 device: cuda:0
 
-# num_iterations: 10000
 # resume: True
 
-learning_rate: 1e-4
+# learning_rate: 1e-4
+learning_rate: 0.1  # tried with 0.01, 0.5, 0.9, 1
 
 # for debugging
-num_iterations: 40
-# num_vis_iterations: 10
-# num_eval_iterations: 10
-# save_checkpoint_freq: 10
+num_iterations: 100
+num_vis_iterations: 10
+num_eval_iterations: 10
+save_checkpoint_freq: 50
 num_workers: 0
-batch_size: 2
+batch_size: 1
+
+
+# DeepFlyod_or_sdXL_text2image_inference:
+#   _target_: dos.components.DeepFlyod_or_sdXL_text2image_inference.StableDiffusionXL
+#   model_type: stable-diffusion-XL
+#   prompts: ["One photorealistic side-facing full-size brown cow dancing with one front leg up in the air. The full cow and the four legs should be clearly visible in the picture. It should have a larger background of a farm and there should only be one cow."] # The cow should have a natural brown coloration. The cow should be captured in a dynamic pose.
+#   negative_prompts: ["cartoon, animated, comic, cropped, cropped image, cropped_photo, wrong anatomy, animal is lying on the ground, lying, dead, black and white photography, human, person"]
+#   # negative_prompts: ["animal is lying on the ground"]
+#   guidance_scales: [15] # 20 before
+#   n_iterations: 4
+#   num_images_per_prompt: 1
+#   cache_dir: /scratch/shared/beegfs/oishideb/diffusion_models  # /tmp

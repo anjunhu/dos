@@ -1,3 +1,8 @@
+import os
+
+# # Set TORCH_HOME to a custom directory
+# os.environ['TORCH_HOME'] = '/work/oishideb/cache/torch_hub'
+
 import argparse
 import torch
 import torchvision.transforms
@@ -22,6 +27,10 @@ class ViTExtractor:
     of the input image.
     d - the embedding dimension in the ViT.
     """
+    
+    # Newly Added
+    # Class variable to cache models - in memory
+    model_cache = {}
 
     def __init__(self, model_type: str = 'dino_vits8', stride: int = 4, model: nn.Module = None, device: str = 'cuda'):
         """
@@ -54,7 +63,11 @@ class ViTExtractor:
         self.hook_handlers = []
         self.load_size = None
         self.num_patches = None
-
+        
+        # Newly Added
+        torch.hub._validate_not_a_forked_repo=lambda a,b,c: True
+        
+            
     @staticmethod
     def create_model(model_type: str) -> nn.Module:
         """
@@ -63,7 +76,12 @@ class ViTExtractor:
                            vit_base_patch16_224]
         :return: the model
         """
-        torch.hub._validate_not_a_forked_repo=lambda a,b,c: True
+        #torch.hub._validate_not_a_forked_repo=lambda a,b,c: True
+        
+        # Check if the model is in the cache
+        if model_type in ViTExtractor.model_cache:
+            return ViTExtractor.model_cache[model_type]
+        
         if 'v2' in model_type:
             model = torch.hub.load('facebookresearch/dinov2', model_type)
         elif 'dino' in model_type:
@@ -81,6 +99,11 @@ class ViTExtractor:
             del temp_state_dict['head.weight']
             del temp_state_dict['head.bias']
             model.load_state_dict(temp_state_dict)
+            
+        # Newly Added
+        # Cache the model for future use
+        ViTExtractor.model_cache[model_type] = model
+        
         return model
 
     @staticmethod
