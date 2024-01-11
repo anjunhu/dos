@@ -7,7 +7,7 @@ import torch
 from dos.components.fuse.extractor_dino import ViTExtractor
 from dos.components.fuse.extractor_sd import process_features_and_mask, get_mask
 from tqdm import tqdm
-from dos.utils.utils_correspondence import pairwise_sim, draw_correspondences_gathered, chunk_cosine_sim, co_pca, find_nearest_patchs, \
+from dos.utils.correspondence import pairwise_sim, draw_correspondences_gathered, chunk_cosine_sim, co_pca, find_nearest_patchs, \
                                 draw_correspondences_lines, draw_correspondences_1_image, resize, draw_correspondences_1_image  #, get_n_colors
 import matplotlib.pyplot as plt
 import numpy as np
@@ -87,7 +87,6 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
         thresholds = torch.tensor(thresholds).to(device)
         bbox_size=[]
         
-    # N = 1
 
     fig_list = []
     output_dict={}

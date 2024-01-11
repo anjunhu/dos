@@ -1,4 +1,4 @@
-##------- CODE taken from here (https://github.com/tomasjakab/laam/blob/sds-investigation/dos/video3d/diffusion/sd.py), 
+##------- CODE taken from https://github.com/tomasjakab/laam/blob/sds-investigation/dos/video3d/diffusion/sd.py. 
 
 import os
 from transformers import CLIPTextModel, CLIPTokenizer, logging

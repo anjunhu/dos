@@ -24,7 +24,7 @@ from odise.config import instantiate_odise
 from odise.data import get_openseg_labels
 from odise.modeling.wrapper import OpenPanopticInference
 
-from dos.utils.utils_correspondence import resize
+from dos.utils.correspondence import resize
 import faiss
 
 COCO_THING_CLASSES = [

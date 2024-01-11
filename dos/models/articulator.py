@@ -27,7 +27,7 @@ import torch.nn.functional as nn_functional
 import matplotlib.pyplot as plt
 from ..utils import utils
 from dos.components.fuse.compute_correspond import compute_correspondences_sd_dino
-from dos.utils.utils_correspondence import resize, draw_correspondences_1_image #, draw_lines_on_img, plot_points
+from dos.utils.correspondence import resize, draw_correspondences_1_image #, draw_lines_on_img, plot_points
 
 from ..components.sd_model_text_to_image.diffusion_sds import Stable_Diffusion_Text_to_Target_Img
 

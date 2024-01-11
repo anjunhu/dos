@@ -246,7 +246,7 @@ def safe_batch_to_device(batch, *args, **kwargs):
     return out_batch
 
 
-# NEWLY ADDED
+# ADDED FOR MULTI-VIEW/3D
 
 def safe_normalize(x, eps=1e-20):
     return x / torch.sqrt(torch.clamp(torch.sum(x * x, -1, keepdim=True), min=eps))
