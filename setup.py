@@ -1,3 +1,5 @@
+##------- This file is from the "Tale of 2 Features" repo https://github.com/Junyi42/sd-dino/blob/master/setup.py
+
 import os
 from setuptools import setup
 import torch
