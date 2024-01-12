@@ -49,7 +49,6 @@ with open('log.txt', 'a') as file:
     file.write(f"The Fuse model loading took {end_time - start_time} seconds to run.\n")
     
 
-
 class InfiniteDataset(torch.utils.data.Dataset):
     def __init__(self, dataset):
         self.dataset = dataset
@@ -65,6 +64,7 @@ class InfiniteDataset(torch.utils.data.Dataset):
 class Trainer:
     train_dataset: Dataset
     model: nn.Module
+    path_to_save_img_per_iteration : str
     val_dataset: Optional[Dataset] = None
     batch_size: int = 12
     val_batch_size: Optional[int] = None
@@ -72,9 +72,9 @@ class Trainer:
     learning_rate: float = 1e-4
     num_iterations: int = 10000
     num_eval_iterations: int = 100
-    num_vis_iterations: int = 10 # changed - before it was 10
+    num_vis_iterations: int = 10
     num_log_iterations: int = 10
-    evaluate_num_visuals: int = 12 # changed - before it was 10
+    evaluate_num_visuals: int = 12
     save_checkpoint_freq: int = 200
     device: str = "cuda"
     translation_loss_weight: float = 1.0
@@ -93,7 +93,6 @@ class Trainer:
     neptune_api_token: Optional[str] = None
 
     def __post_init__(self):
-        print('len of val_dataset', self.val_dataset)
         self.val_dataset = self.val_dataset or self.train_dataset
 
         self.train_dataset_collate_fn = self.train_dataset.collate_fn
@@ -225,21 +224,6 @@ class Trainer:
         if visualize:
             
             num_visuals = min(num_visuals, len(batch["image"]))
-            """
-            batch.keys() are dict_keys(['mesh', 'image', 'mask', 'pose', 'texture_features', 'name'])
-            model_outputs.keys() are dict_keys(['image_pred', 'mask_pred', 'albedo', 'shading', 'rendered_kps', 'rendered_image_with_kps', 'target_image_with_kps', 'target_corres_kps'])
-            visuals_dict.keys() are dict_keys(['image', 'image_pred'])
-            """
-            
-            # visuals_dict = self.model.get_visuals_dict(
-            #     model_outputs, batch, num_visuals=num_visuals
-            # )
-           
-            # visuals_dict = {key: model_outputs[key] for key in ['target_image_with_kps', 'rendered_image_with_kps']}
-            
-            # for index, (visual_name, visual) in enumerate(visuals_dict.items()):
-            #     visual.savefig(f'{visual_name}_{index}.png', bbox_inches='tight')                
-            #     neptune_run[log_prefix + "/" + visual_name].append(visual, step=iteration)
             
             start_time = time.time()    
             for index, visual in enumerate(model_outputs['rendered_image_with_kps']):
@@ -257,7 +241,6 @@ class Trainer:
 
     def evaluate(self, iteration, neptune_run):
         print("Evaluating...")
-        print('len of self.val_dataset', len(self.val_dataset))   # its 32
         # val_batch_size = self.val_batch_size or 2 * self.batch_size
         
         val_batch_size = self.batch_size
@@ -272,8 +255,6 @@ class Trainer:
 
         total_loss = 0
         num_batches = 0
-        
-        # len(val_loader) is 32
         
         for i, batch in tqdm(enumerate(val_loader), total=len(val_loader)):
             if i == 0:
@@ -291,11 +272,11 @@ class Trainer:
             total_loss += loss
             num_batches += 1
             
-            if not os.path.exists(f'/users/oishideb/dos_output_files/cow/all_iteration_Val/batch_size_0'):
-                os.makedirs(f'/users/oishideb/dos_output_files/cow/all_iteration_Val/batch_size_0')
+            # if not os.path.exists(f'/users/oishideb/dos_output_files/cow/all_iteration_Val/batch_size_0'):
+            #     os.makedirs(f'/users/oishideb/dos_output_files/cow/all_iteration_Val/batch_size_0')
 
-            print('iteration num from Val', i)
-            model_outputs["rendered_image_with_kps"][0].savefig(f'/users/oishideb/dos_output_files/cow/all_iteration_Val/batch_size_0/{iteration}_rendered_image_vert_fr_mask.png', bbox_inches='tight')
+            # print('iteration num from Val', i)
+            # model_outputs["rendered_image_with_kps"][0].savefig(f'/users/oishideb/dos_output_files/cow/all_iteration_Val/batch_size_0/{iteration}_rendered_image_vert_fr_mask.png', bbox_inches='tight')
 
         # Compute average validation loss
         avg_loss = total_loss / num_batches
@@ -385,33 +366,33 @@ class Trainer:
             if save_each_iteration:
                 start_time = time.time()
                 
-                if not os.path.exists(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/rendered_img'):
-                    os.makedirs(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/rendered_img')
+                if not os.path.exists(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/rendered_img'):
+                    os.makedirs(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/rendered_img')
         
-                model_outputs["rendered_image_with_kps"][0].savefig(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/rendered_img/{iteration}_rendered_image_vert_fr_mask.png', bbox_inches='tight')
+                model_outputs["rendered_image_with_kps"][0].savefig(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/rendered_img/{iteration}_rendered_image.png', bbox_inches='tight')
                 
-                if not os.path.exists(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/target_img'):
-                    os.makedirs(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/target_img')
+                if not os.path.exists(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/target_img'):
+                    os.makedirs(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/target_img')
                 
-                model_outputs["target_image_with_kps"][0].savefig(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/target_img/{iteration}_target_img.png', bbox_inches='tight')
-                
-                
-                if not os.path.exists(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/cycle_consi'):
-                    os.makedirs(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/cycle_consi')
-                
-                model_outputs["cycle_consi_image_with_kps"][0].savefig(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/cycle_consi/{iteration}_cycle_consi.png', bbox_inches='tight')
+                model_outputs["target_image_with_kps"][0].savefig(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/target_img/{iteration}_target_img.png', bbox_inches='tight')
                 
                 
-                if not os.path.exists(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/rendered_image_with_kps_list_after_cyc_check'):
-                    os.makedirs(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/rendered_image_with_kps_list_after_cyc_check')
+                if not os.path.exists(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/cycle_consi'):
+                    os.makedirs(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/cycle_consi')
                 
-                model_outputs["rendered_image_with_kps_list_after_cyc_check"][0].savefig(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/rendered_image_with_kps_list_after_cyc_check/{iteration}_rendered_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
+                model_outputs["cycle_consi_image_with_kps"][0].savefig(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/cycle_consi/{iteration}_cycle_consi.png', bbox_inches='tight')
                 
                 
-                if not os.path.exists(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/target_image_with_kps_list_after_cyc_check'):
-                    os.makedirs(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/target_image_with_kps_list_after_cyc_check')
+                if not os.path.exists(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/rendered_image_with_kps_list_after_cyc_check'):
+                    os.makedirs(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/rendered_image_with_kps_list_after_cyc_check')
                 
-                model_outputs["target_image_with_kps_list_after_cyc_check"][0].savefig(f'/users/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_{index_of_image}/target_image_with_kps_list_after_cyc_check/{iteration}_target_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
+                model_outputs["rendered_image_with_kps_list_after_cyc_check"][0].savefig(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/rendered_image_with_kps_list_after_cyc_check/{iteration}_rendered_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
+                
+                
+                if not os.path.exists(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/target_image_with_kps_list_after_cyc_check'):
+                    os.makedirs(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/target_image_with_kps_list_after_cyc_check')
+                
+                model_outputs["target_image_with_kps_list_after_cyc_check"][0].savefig(f'{self.path_to_save_img_per_iteration}/batch_size_{index_of_image}/target_image_with_kps_list_after_cyc_check/{iteration}_target_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
                 
                 end_time = time.time()  # Record the end time
 
