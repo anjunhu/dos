@@ -3,7 +3,6 @@ _target_: dos.trainer.Trainer # Class Name
 train_dataset:
   _target_: dos.datasets.ImageDataset       # Class Name
   root_dir: /scratch/shared/beegfs/oishideb/cow  # sample 1
-  #root_dir: /users/oishideb/generative-models/assets   #/cow_Deep_Floyd_gen_GS_10.png
   # root_dir: /work/oishideb/cow_sample_2  # sample 2
   # root_dir: /work/oishideb/cow_dataset/cow_dataset # 9 images
   # root_dir: /scratch/shared/beegfs/tomj/projects/articulator/datasets/synth_animals/cow-rd-articulator-v1.0  # Corrupted dataset
@@ -17,12 +16,10 @@ train_dataset:
     - name: camera_matrix
       suffix: _camera.txt
 
-
-
 model:
-  _target_: dos.models.articulator.Articulator  # Class Name
+  _target_: dos.models.articulator.Articulator 
   bones_predictor:
-    _target_: dos.components.skinning.bones_estimation.BonesEstimator # Class Name
+    _target_: dos.components.skinning.bones_estimation.BonesEstimator
     num_body_bones: 8
     num_leg_bones: 3
     body_bones_type: z_minmax_y+
@@ -61,6 +58,7 @@ model:
 #path_to_save_horse_img: /users/oishideb/dos_output_files/horse/15_Sept
 checkpoint_root_dir: /work/oishideb/articulation_cow_chkpts
 experiment_name: articulator-dev-0.1
+path_to_save_img_per_iteration: /users/oishideb/dos_output_files/cow/all_iteration_Train
 
 device: cuda:0
 
