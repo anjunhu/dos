@@ -26,6 +26,7 @@ model:
     temperature: 0.05
 
   path_to_save_images: /work/oishideb/dos_output_files/cow
+  num_pose: 2
   cache_dir: /work/oishideb/cache/huggingface_hub
   shape_template_path: /scratch/shared/beegfs/tomj/projects/articulator/data/synth_animals/shape_templates/cow_female-rd/Cow-OBJ-v01/Cow_Highpoly.obj
   enable_texture_predictor: False
@@ -40,14 +41,14 @@ model:
     cam_pos_z_offset: 0.0
     fov: 28.84 # blender 70 mm focal length, 36 mm sensor width
 
-  stable_Diffusion_Text_to_Target_Img:  # variable Name
+  sd_Text_to_Target_Img:  # variable Name
     _target_: dos.components.sd_model_text_to_image.diffusion_sds.Stable_Diffusion_Text_to_Target_Img # Class Name
-     # cache_dir:
+    # cache_dir:
     output_dir: "sd_sds_output"
     init_image_path: /users/oishideb/laam/dos/examples/data/cow.png
     vis_name: cow-sds_latent-l2_image-600-lr1e-1.jpg
-    prompts: ["a running cow"]
-    negative_prompts: [" "]
+    prompts: ['a cow sitting']
+    negative_prompts: ['']
     mode: sds_latent-l2_image
     lr: 0.1
     lr_l2: 1e4
@@ -68,7 +69,7 @@ device: cuda:0
 learning_rate: 0.1  # tried with 0.01, 0.5, 0.9, 1
 
 # for debugging
-num_iterations: 100
+num_iterations: 70
 num_vis_iterations: 10
 num_eval_iterations: 10
 save_checkpoint_freq: 50

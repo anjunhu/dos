@@ -98,8 +98,9 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
     # Get patch index for the keypoints
     # img1_kps should be 2D [(num of kps)20,2]
     print('img1_kps.shape', img1_kps.shape)
-    print('img1_kps[0].shape', img1_kps[0].shape)
-    
+    print('img1_kps[:, 1].shape', img1_kps[:, 1].shape)
+    print('img1_kps[:, 0].shape', img1_kps[:, 0].shape)
+        
     img1_y = img1_kps[:, 1].cpu()           # ORIGINAL CODE                # img1_kps should be [(num of kps)20,2]
     img1_x = img1_kps[:, 0].cpu()           # ORIGINAL CODE                # img1_kps should be [(num of kps)20,2]
     
@@ -351,10 +352,8 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
     # font =  ImageFont.truetype("/users/oishideb/dos/dos/components/fuse/Gidole-Regular.ttf", 40)
     # #draw.text((50, 50), f"Similarity value:{sim_1_to_2}", fill='blue', font = font)
     
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     img1_kps = img1_kps.to(device)
     kps_1_to_2 = kps_1_to_2.to(device)
-    
     kps_2_to_1 = kps_2_to_1.to(device)
     
     return img2, kps_1_to_2, img_cc, kps_2_to_1

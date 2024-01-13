@@ -34,6 +34,8 @@ from ..components.sd_model_text_to_image.diffusion_sds import Stable_Diffusion_T
 # UNCOMMENT IT LATER
 # from ..components.DeepFlyod_or_sdXL_text2image_inference import StableDiffusionXL, DeepFloydIF
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 def closest_visible_points(bones_midpts, mesh_v_pos, visible_vertices):
     """
     Find the closest visible points in the mesh to the given bone midpoints.
@@ -67,73 +69,6 @@ def closest_visible_points(bones_midpts, mesh_v_pos, visible_vertices):
     closest_points = mesh_v_pos[batch_indices, closest_idx, :]
     
     return closest_points
-
-
-
-def closest_visible_points_new(bones_midpts, mesh_v_pos, visible_vertices, mask):
-    """
-    Find the closest visible points in the mesh to the given bone midpoints.
-    
-    Parameters:
-    - bones_midpts: Tensor of bone midpoints with shape [Batch size, 20, 3]
-    - mesh_v_pos: Tensor of mesh vertex positions with shape [Batch size, 31070, 3]
-    - visible_vertices: Tensor indicating visibility of each vertex with shape [Batch size, 31070]
-    - mask: Tensor indicating which vertices are inside the mask with shape [Batch size, height, width]
-    
-    Returns:
-    - closest_points: Tensor of closest visible points with shape [Batch size, 20, 3]
-    """
-    
-    # Project 3D vertices to 2D to get corresponding mask values
-    # Assuming x_coords and y_coords are within the bounds of the mask's dimensions
-    # and are indices for the 2D mask.
-    x_coords = mesh_v_pos[..., 0].long()
-    y_coords = mesh_v_pos[..., 1].long()
-
-    # Ensure x_coords and y_coords are clamped to the size of the mask to avoid out-of-bounds errors
-    height, width = mask.shape[1], mask.shape[2]
-    x_coords = x_coords.clamp(0, width - 1)
-    y_coords = y_coords.clamp(0, height - 1)
-
-    # Since we are gathering along the height and width dimensions, we need to add a batch dimension to the indices
-    batch_size = mask.shape[0]
-    batch_indices = torch.arange(batch_size).view(batch_size, 1, 1)
-
-    # Use the batch_indices to align the gather operation along the batch dimension
-    x_coords = x_coords.unsqueeze(0).expand(batch_size, -1, -1)
-    y_coords = y_coords.unsqueeze(0).expand(batch_size, -1, -1)
-
-    # Gather the mask values using the 2D coordinates
-    vertex_mask = mask[batch_indices, y_coords, x_coords]
-
-    # Expand dimensions for broadcasting
-    bones_midpts_exp = bones_midpts.unsqueeze(2)
-    mesh_v_pos_exp = mesh_v_pos.unsqueeze(1)
-    
-    # Compute squared distances between each bone midpoint and all mesh vertices
-    dists = ((bones_midpts_exp - mesh_v_pos_exp) ** 2).sum(-1)
-    
-    # Mask occluded vertices and vertices outside the mask by setting their distance to a high value
-    max_val = torch.max(dists).item() + 1
-    
-    # inorder to fix RuntimeError: Subtraction, the `-` operator, with a bool tensor is not supported. If you are trying to invert a mask, use the `~` or `logical_not()` operator instead.
-    occluded_or_outside_mask = (~(visible_vertices.bool()) | ~(vertex_mask.bool())).unsqueeze(1)
-
-    # occluded_or_outside_mask has an extra singleton dimension
-    # and its shape is [1, 1, 1, 7483] before squeezing
-    occluded_or_outside_mask = occluded_or_outside_mask.squeeze(1)  # Squeeze out the second dimension
-
-    dists.masked_fill_(occluded_or_outside_mask, max_val)
-    
-    # Get the index of the minimum distance for each bone midpoint
-    _, closest_idx = dists.min(-1)
-    
-    # Gather the closest visible points from mesh_v_pos using the computed indices
-    batch_indices = torch.arange(bones_midpts.size(0), device=closest_idx.device).unsqueeze(1)
-    closest_points = mesh_v_pos[batch_indices, closest_idx, :]
-    
-    return closest_points
-
 
     
 def mask_erode_tensor(batch_of_masks):
@@ -348,8 +283,6 @@ def get_closest_vertices_fr_mask(projected_visible_v_in_2D, eroded_mask):
 
     return closest_vertices
 
-
-
 def sample_points_on_line(pt1, pt2, num_samples):
     """
     Sample points on lines defined by pt1 and pt2, excluding the endpoints.
@@ -389,7 +322,8 @@ class Articulator(BaseModel):
         self,
         path_to_save_images,
         cache_dir,
-        stable_Diffusion_Text_to_Target_Img,
+        num_pose,
+        sd_Text_to_Target_Img=None,
         encoder=None,
         enable_texture_predictor=True,
         texture_predictor=None,
@@ -421,8 +355,11 @@ class Articulator(BaseModel):
         
         self.cache_dir = cache_dir
     
-        self.stable_Diffusion_Text_to_Target_Img = Stable_Diffusion_Text_to_Target_Img(cache_dir = self.cache_dir)
+        # self.sd_Text_to_Target_Img = sd_Text_to_Target_Img if sd_Text_to_Target_Img is not None else Stable_Diffusion_Text_to_Target_Img(cache_dir = self.cache_dir)
         
+        self.sd_Text_to_Target_Img = Stable_Diffusion_Text_to_Target_Img(cache_dir = self.cache_dir)
+        
+        self.num_pose= num_pose
 
     def _load_shape_template(self, shape_template_path):
         return load_mesh(shape_template_path)
@@ -501,7 +438,6 @@ class Articulator(BaseModel):
             # Convert the list of padded tensors to a single tensor
             visible_v_position = torch.stack(padded_tensors, dim=0)
             
-
             #### Sample farthest points
             visible_v_position = visible_v_position.permute(0,2,1)
             
@@ -574,7 +510,6 @@ class Articulator(BaseModel):
             print(f"The get_vertices_inside_mask function took {end_time - start_time} seconds to run.")
         
             kps_img_resolu = (vertices_inside_mask/256) * 840
-            print('kps_img_resolu shape', kps_img_resolu.shape)
             
             bone_end_pt_1 = closest_visible_points(bone_end_pt_1_3D, articulated_mesh.v_pos, visible_vertices) # , eroded_mask)
             bone_end_pt_2 = closest_visible_points(bone_end_pt_2_3D, articulated_mesh.v_pos, visible_vertices) # , eroded_mask)
@@ -608,11 +543,14 @@ class Articulator(BaseModel):
         kps_img_resolu_list = []
         corres_target_kps_list = []
         
+        # shape of rendered_image and target_image is [batch size, 3, 256, 256]
         print('rendered_image.shape', rendered_image.shape)
         print('target_image.shape', target_image.shape)
         
         # Iterate over the batch dimension and convert each sample
-        for index in range(rendered_image.shape[0]):
+        # for index in range(rendered_image.shape[0]):
+        
+        for index, kps_1_batch in enumerate(kps_img_resolu):
             
             # rendered_image_PIL is 256*256 (default size)
             rendered_image_PIL = F.to_pil_image(rendered_image[index])
@@ -638,7 +576,7 @@ class Articulator(BaseModel):
             sample_fr_mask = False
             if sample_fr_mask:
                 
-                # # Sample 50 random points for each batch
+                # # Sample 'num_random_kp' random points for each batch
                 # sampled_vertices = torch.zeros(rendered_image.shape[0], num_random_kp, 2)
                 # for i in range(kps_img_resolu.shape[0]):
                 #     indices = torch.randperm(kps_img_resolu.shape[1])[:num_random_kp]
@@ -647,31 +585,13 @@ class Articulator(BaseModel):
                 # sampled_vertices = (sampled_vertices[index]/256) * 840
                 #rendered_image_with_kps = draw_correspondences_1_image(sampled_vertices, rendered_image_PIL, index=0) 
                 
-                rendered_image_with_kps = draw_correspondences_1_image(kps_img_resolu[index], rendered_image_PIL, index=0)  # , num_samples
+                rendered_image_with_kps = draw_correspondences_1_image(kps_1_batch, rendered_image_PIL, index=0)  # , num_samples
                 # rendered_image_with_kps = plot_points(kps_img_resolu, rendered_image_PIL)
                 
                 # Set the background color to grey
                 plt.gcf().set_facecolor('grey')
                 rendered_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_rendered_image_vert_fr_mask.png', bbox_inches='tight')
                 
-
-            # midpts_in_2D = False
-            # if midpts_in_2D:
-            #     kps_img_resolu_mid_kp20 = (bones_mid_pt_in_2D[index] + 1) * rendered_image_PIL.size[0]/2
-            #     kps_img_resolu_all_kp40 = (bones_closest_pts_2D_proj_all_kp40[index] + 1) * rendered_image_PIL.size[0]/2
-                
-            #     rendered_image_with_kps = draw_correspondences_1_image(kps_img_resolu_mid_kp20, rendered_image_PIL, index=0) #, color='yellow')                  #[-6:]
-            #     rendered_image_with_kps = draw_correspondences_1_image(kps_img_resolu_all_kp40, rendered_image_PIL, index=0) #, color='orange')  
-                
-            #     kps_img_resolu_bone_1_cls_2D = (bone_end_pt_1_in_2D_cls[index] + 1) * rendered_image_PIL.size[0]/2
-            #     kps_img_resolu_bone_2_cls_2D = (bone_end_pt_2_in_2D_cls[index] + 1) * rendered_image_PIL.size[0]/2
-        
-            #     x1, y1 = kps_img_resolu_bone_1_cls_2D[:,0], kps_img_resolu_bone_1_cls_2D[:,1]
-            #     x2, y2 = kps_img_resolu_bone_2_cls_2D[:,0], kps_img_resolu_bone_2_cls_2D[:,1]
-                
-            #     rendered_image_with_kps = draw_lines_on_img(rendered_image_with_kps, bone_end_pt_1_3D, bone_end_pt_2_3D)
-            #     # rendered_image_with_kps.save(f'img_rendered_with_kps_midpts_{index}.png', bbox_inches='tight') 
-            
                 
             midpts_calculated_in_3D = True
             if midpts_calculated_in_3D:
@@ -683,9 +603,6 @@ class Articulator(BaseModel):
                 #kps_img_resolu_all_visible_vertices = (projected_visible_v_in_2D[index] + 1) * rendered_image_PIL.size[0]/2
                 # rendered_image_with_kps = draw_correspondences_1_image(kps_img_resolu_mid_kp20, rendered_image_PIL, index=0) #, color='yellow')              #[-6:]
             
-                # THROWING ERROR ATM
-                # rendered_image_with_kps = draw_correspondences_1_image(kps_img_resolu_all_kp40, rendered_image_with_kps, index=0) #, color='orange')  
-                
                 kps_img_resolu_bone_1_projected_in_2D = (bone_end_pt_1_projected_in_2D[index] + 1) * rendered_image_PIL.size[0]/2
                 kps_img_resolu_bone_2_projected_in_2D = (bone_end_pt_2_projected_in_2D[index] + 1) * rendered_image_PIL.size[0]/2
 
@@ -715,13 +632,9 @@ class Articulator(BaseModel):
             
             start_time = time.time()
             # shape is ([10, 60, 2])
-            print('kps_img_resolu.shape', kps_img_resolu.shape)
-            # shape is ([60, 2])
-            print('kps_img_resolu[index].shape', kps_img_resolu[index].shape)
+            print('kps_1_batch.shape', kps_1_batch.shape)
             
-            
-            # CHANGED FOR 3D/Multi VIEW from -> img1_kps=kps_img_resolu[index] to img1_kps=kps_img_resolu
-            target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_img_resolu[index], img2=target_image_PIL, index = index ,model=sd_model, aug=sd_aug)
+            target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_1_batch, img2=target_image_PIL, index = index ,model=sd_model, aug=sd_aug)
             
             end_time = time.time()  # Record the end time
 
@@ -730,16 +643,15 @@ class Articulator(BaseModel):
                 
             print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
 
-            print('kps_img_resolu.shape', kps_img_resolu.shape)
-            print('kps_img_resolu[index].shape', kps_img_resolu[index].shape)
+            print('kps_1_batch.shape', kps_1_batch.shape)
             print('corres_target_kps.shape', corres_target_kps.shape)
+            print('cycle_consi_corres_kps.shape', cycle_consi_corres_kps.shape)
             
             # LOSS
-            # CHANGED FOR 3D/Multi VIEW from -> kps_img_resolu[index] to kps_img_resolu
-            loss = nn_functional.l1_loss(kps_img_resolu[index], corres_target_kps, reduction='mean')
+            loss = nn_functional.l1_loss(kps_1_batch, corres_target_kps, reduction='mean')
             # draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
             
-            rendered_image_with_kps = draw_correspondences_1_image(kps_img_resolu[index], rendered_image_PIL, index = 0) #, color='yellow')              #[-6:]
+            rendered_image_with_kps = draw_correspondences_1_image(kps_1_batch, rendered_image_PIL, index = 0) #, color='yellow')              #[-6:]
             # Set the background color to grey
             plt.gcf().set_facecolor('grey')
             plt.text(80, 0.95, f'Rendered Img ; Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
@@ -754,20 +666,9 @@ class Articulator(BaseModel):
             rendered_image_with_kps_list.append(rendered_image_with_kps)
             target_image_with_kps_list.append(target_image_with_kps)
             plt.close()
-            
-            """ FOR CYCLE CONSISTENCY CHECK """
-            # start_time = time.time()
-            
-            # cycle_consi_image_with_kps, cycle_consi_corres_kps = compute_correspondences_sd_dino(img1=target_image_PIL, img1_kps=corres_target_kps, img2=rendered_image_PIL, index = index, model=sd_model, aug=sd_aug)
-            
-            # end_time = time.time()  # Record the end time
-            # with open('log.txt', 'a') as file:
-            #     file.write(f"The 'compute_correspondences_sd_dino' for cc check took {end_time - start_time} seconds to run.\n")
-                
-            # print(f"The compute_correspondences_sd_dino for cc check took {end_time - start_time} seconds to run.")
 
-            
-            loss = nn_functional.l1_loss(kps_img_resolu[index], cycle_consi_corres_kps, reduction='mean')
+            # LOSS CALCULATED AFTER CYCLE-CONSISTENCY CHECK
+            loss = nn_functional.l1_loss(kps_1_batch, cycle_consi_corres_kps, reduction='mean')
             # draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
             # plt.text(80, 0.95, f' Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
             # Set the background color to grey
@@ -780,11 +681,11 @@ class Articulator(BaseModel):
             
             # REMOVING POINTS FOLLOWING CYCLE CONSISTENCY CHECK
             # Calculate the difference
-            difference = torch.abs(kps_img_resolu[index] - cycle_consi_corres_kps)
+            difference = torch.abs(kps_1_batch - cycle_consi_corres_kps)
             # Find the points where the difference is less than or equal to 2
             mask = torch.all(difference <= 15, dim=1)
             # Apply the mask to kps_img_resolu
-            kps_img_resolu = kps_img_resolu[index][mask]
+            kps_img_resolu = kps_1_batch[mask]
             
             # Update the Target kps after CYCLE CONSISTENCY CHECK
             corres_target_kps = corres_target_kps[mask]
@@ -809,13 +710,42 @@ class Articulator(BaseModel):
             target_image_with_kps_list_after_cyc_check.append(target_image_with_kps_cyc_check)
             corres_target_kps_list.append(corres_target_kps)
             kps_img_resolu_list.append(kps_img_resolu)
-    
             
+        
+        # Following cycle consistency check some of the points got removed, in order to make the lenght same, it has been padded with zeros.
+        # Find the maximum length
+        max_length = max(len(item) for item in kps_img_resolu_list if hasattr(item, '__len__'))
+
+        # # Find the maximum length (max value of n)
+        # max_length = max(tensor.shape[0] for tensor in tensor_list)
+
+        # Function to pad a tensor to the max_length
+        def pad_tensor(tensor, max_length, device):
+            n = tensor.shape[0]
+            if n < max_length:
+                padding = max_length - n
+                # Ensuring the padding tensor is on the same device as the input tensor
+                padding_tensor = torch.zeros(padding, 2, device=device)
+                padded_tensor = torch.cat((tensor, padding_tensor), dim=0)
+                return padded_tensor
+            return tensor
+
+        # Pad tensors in both lists
+        padded_kps_img_resolu_list = [pad_tensor(tensor.to(device), max_length, device) for tensor in kps_img_resolu_list]
+        padded_corres_target_kps_list = [pad_tensor(tensor.to(device), max_length, device) for tensor in corres_target_kps_list]
+        
+        # Print padded tensors (for verification)
+        for tensor1, tensor2 in zip(padded_kps_img_resolu_list, padded_corres_target_kps_list):
+            print(tensor1)
+            print(tensor2)
+            print("---")  # Separator for clarity
+
+        
         output_dict = {
-        "rendered_kps": torch.stack(kps_img_resolu_list),  #[-6:]
+        "rendered_kps": torch.stack(padded_kps_img_resolu_list),  #[-6:]
         "rendered_image_with_kps": rendered_image_with_kps_list,
         "target_image_with_kps": target_image_with_kps_list,
-        "target_corres_kps": torch.stack(corres_target_kps_list),     # corres_target_kps_tensor_stack,
+        "target_corres_kps": torch.stack(padded_corres_target_kps_list),     # corres_target_kps_tensor_stack,
         "cycle_consi_image_with_kps": cycle_consi_image_with_kps_list,
         "rendered_image_with_kps_list_after_cyc_check": rendered_image_with_kps_list_after_cyc_check,
         "target_image_with_kps_list_after_cyc_check": target_image_with_kps_list_after_cyc_check
@@ -834,7 +764,6 @@ class Articulator(BaseModel):
         else:
             mesh = batch["mesh"]  # rest pose
         
-
         # estimate bones
         # bones_predictor_outputs is dictionary with keys - ['bones_pred', 'skinnig_weights', 'kinematic_chain', 'aux'])
         start_time = time.time()
@@ -856,15 +785,13 @@ class Articulator(BaseModel):
         # with open('log.txt', 'a') as file:
         #     file.write(f"The 'articulation_predictor' took {end_time - start_time} seconds to run.\n")
         print(f"The articulation_predictor function took {end_time - start_time} seconds to run.")
-        
-        
+                
         # NO BONE ROTATIONS
         # bones_rotations = torch.zeros(batch_size, num_bones, 3, device=mesh.v_pos.device)
         
         # DUMMY BONE ROTATIONS - pertrub the bones rotations (only to test the implementation)
         # bones_rotations = bones_rotations + torch.randn_like(bones_rotations) * 0.1
     
-
         start_time = time.time()  # Record the start time
         
         # apply articulation to mesh
@@ -881,7 +808,6 @@ class Articulator(BaseModel):
         # with open('log.txt', 'a') as file:
         #     file.write(f"The 'mesh_skinning' took {end_time - start_time} seconds to run.\n")
         print(f"The mesh_skinning function took {end_time - start_time} seconds to run.")
-        
         
         #articulated_bones_predictor_outputs = self.bones_predictor(articulated_mesh.v_pos)
         
@@ -908,11 +834,14 @@ class Articulator(BaseModel):
         if "pose" not in batch:
             
             # COMMENT out for 3D/Multiview
-            pose = geometry_utils.blender_camera_matrix_to_magicpony_pose(
-                batch["camera_matrix"]
-            )
+            # # pose shape is [1,12]
+            # pose = geometry_utils.blender_camera_matrix_to_magicpony_pose(
+            #     batch["camera_matrix"]
+            # )
+            
             # For Multi View
-            # pose, pose_directions = utils.rand_poses(10, device=torch.device('cuda:0'))
+            # # pose shape is [10, 12]
+            pose, pose_directions = utils.rand_poses(self.num_pose, device=torch.device('cuda:0'))
         else:
             pose=batch["pose"]
         
@@ -937,7 +866,11 @@ class Articulator(BaseModel):
         #     file.write(f"The 'renderer' took {end_time - start_time} seconds to run.\n")
         print(f"The renderer function took {end_time - start_time} seconds to run.")
         
-        target_img_tensor_list = []
+        # target_img_tensor_list = []
+        
+        # Creates an empty tensor to hold the final result
+        # all_generated_target_img shape is [num_pose, 3, 256, 256]
+        all_generated_target_img = torch.empty(renderer_outputs["image_pred"].shape[0:])
         
         for i in range(pose.shape[0]):
             
@@ -953,15 +886,13 @@ class Articulator(BaseModel):
             rendered_image_PIL = F.to_pil_image(renderer_outputs["image_pred"][i])
             #rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
             dir_path = f'{self.path_to_save_images}/all_iteration_Train/batch_size_0/diff_pose/'
-
             # Create the directory if it doesn't exist
             os.makedirs(dir_path, exist_ok=True)
-
             # Save the image
             rendered_image_PIL.save(f'{dir_path}{i}_diff_pose_rendered_image.png', bbox_inches='tight')
             
 
-            # target_img_fr_sd = self.stable_Diffusion_Text_to_Target_Img(
+            # target_img_fr_sd = self.sd_Text_to_Target_Img(
             # cache_dir="/work/oishideb/cache/huggingface_hub",
             # output_dir='output-new',
             # init_image_path='/users/oishideb/laam/dos/examples/data/cow.png',
@@ -981,7 +912,7 @@ class Articulator(BaseModel):
             # image_fr_path = False
             # )
             
-            target_img_rgb, target_img_decoded = self.stable_Diffusion_Text_to_Target_Img.run_experiment(
+            target_img_rgb, target_img_decoded = self.sd_Text_to_Target_Img.run_experiment(
             input_image = renderer_outputs["image_pred"][i],
             image_fr_path = False
             )
@@ -992,20 +923,18 @@ class Articulator(BaseModel):
             #rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
             
             dir_path = f'{self.path_to_save_images}/all_iteration_Train/batch_size_0/diff_pose/'
-
             # Create the directory if it doesn't exist
             os.makedirs(dir_path, exist_ok=True)
-
             # Save the image
             target_image_PIL.save(f'{dir_path}{i}_diff_pose_target_image.png', bbox_inches='tight')
 
             print("target_img_rgb.shape", target_img_rgb.shape)
-            target_img_tensor_list.append(target_img_rgb)
             
-        stack_of_target_img = torch.stack(target_img_tensor_list)
+            # Inserts the new image into the final tensor
+            all_generated_target_img[i] = target_img_rgb
             
-        print("stack_of_target_img.shape", stack_of_target_img.shape)
             
+        print('batch["image"].shape', batch["image"].shape)
         
         start_time = time.time()
         # compute_correspondences for keypoint loss
@@ -1017,7 +946,8 @@ class Articulator(BaseModel):
             #bones_predictor_outputs["bones_pred"],    # this is a rest pose    # bones_predictor_outputs["bones_pred"].shape is torch.Size([4, 20, 2, 3]), 4 is batch size, 20 is number of bones, 2 are the two endpoints of the bones and 3 means the 3D point defining one of the end points of the line segment in 3D that defines the bone 
             renderer_outputs["mask_pred"],
             renderer_outputs["image_pred"],            # renderer_outputs["image_pred"].shape is torch.Size([4, 3, 256, 256]), 4 is batch size, 3 is RGB channels, 256 is image resolution
-            target_img_rgb,                            # CHANGED replaced the target image with sd generated, BEFORE batch["image"],
+            all_generated_target_img,                  # CHANGED replaced the target image with sd generated, BEFORE batch["image"],
+            # batch["image"],                          # static Target Images
             sd_model, 
             sd_aug
         )
@@ -1028,7 +958,6 @@ class Articulator(BaseModel):
         
         print(f"The compute_correspondences took {end_time - start_time} seconds to run.")
         
-
         # esamble outputs
         outputs = {}
         # TODO: probaly rename the ouputs of the renderer
@@ -1047,7 +976,6 @@ class Articulator(BaseModel):
         # 5. Compute the loss between the source and target keypoints
         print('Calculating l1 loss')
         # loss = nn_functional.mse_loss(rendered_keypoints, target_keypoints, reduction='mean')
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         model_outputs["rendered_kps"] = model_outputs["rendered_kps"].to(device)
         model_outputs["target_corres_kps"] = model_outputs["target_corres_kps"].to(device)
 
