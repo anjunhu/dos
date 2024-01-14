@@ -66,7 +66,13 @@ class Renderer(object):
         h, w = resolution
         batch_size = len(mvp)
         if background is None:
-            background = torch.zeros((batch_size, h, w, 3), device=mvp.device)
+            # # Black Background
+            # background = torch.zeros((batch_size, h, w, 3), device=mvp.device)
+            
+            # Grey Background
+            grey_value = 0.5  # Mid-grey value in [0, 1] range
+            background = torch.full((batch_size, h, w, 3), grey_value, device=mvp.device)
+
         else:
             # expects channels last
             background = background.permute(0, 2, 3, 1)
