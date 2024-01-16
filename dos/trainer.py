@@ -235,6 +235,20 @@ class Trainer:
             end_time = time.time()  # Record the end time
             with open('log.txt', 'a') as file:
                 file.write(f"The 'neptune logging' took {end_time - start_time} seconds to run.\n")
+        
+    
+        ## Saving all poses with keypoints
+        for index, item in enumerate(model_outputs["rendered_image_with_kps"]):
+            ##
+            if not os.path.exists(f'{self.path_to_save_img_per_iteration}/batch_size_0/all_poses_rendered_img_final'):
+                os.makedirs(f'{self.path_to_save_img_per_iteration}/batch_size_0/all_poses_rendered_img_final')
+
+            model_outputs["rendered_image_with_kps"][index].savefig(f'{self.path_to_save_img_per_iteration}/batch_size_0/all_poses_rendered_img_final/{index}_poses_rendered_image.png', bbox_inches='tight')
+
+            if not os.path.exists(f'{self.path_to_save_img_per_iteration}/batch_size_0/all_poses_target_img_final'):
+                os.makedirs(f'{self.path_to_save_img_per_iteration}/batch_size_0/all_poses_target_img_final')
+
+            model_outputs["target_image_with_kps"][index].savefig(f'{self.path_to_save_img_per_iteration}/batch_size_0/all_poses_target_img_final/{index}_poses_target_img.png', bbox_inches='tight')
             
         return loss_dict["loss"], model_outputs
     

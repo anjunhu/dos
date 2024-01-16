@@ -16,7 +16,6 @@ from PIL import Image, ImageDraw, ImageFont
 import ipdb
 import time
 
-
 NOT_FUSE = False
 ONLY_DINO = False
 DINOV1 = False
@@ -40,7 +39,6 @@ VER = f'v1-5';  # version of diffusion, v1-3, v1-4, v1-5, v2-1-base
 SIZE=960; # image size for the sd input # ORIGINAL CODE
 TIMESTEP = 100; # timestep for diffusion, [0, 1000], 0 for no noise added
 INDICES=[2,5,8,11] # select different layers of sd features, only the first three are used by default
-
 
 # # Ensure to set the model to evaluation mode if you're doing inference
 # sd_model.eval()
@@ -96,15 +94,8 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
     img1 = resize(img1, img_size, resize=True, to_pil=True, edge=EDGE_PAD)        # this is for DINO - img size used is 840*840
     
     # Get patch index for the keypoints
-    # img1_kps should be 2D [(num of kps)20,2]
-    print('img1_kps.shape', img1_kps.shape)
-    print('img1_kps[:, 1].shape', img1_kps[:, 1].shape)
-    print('img1_kps[:, 0].shape', img1_kps[:, 0].shape)
-        
     img1_y = img1_kps[:, 1].cpu()           # ORIGINAL CODE                # img1_kps should be [(num of kps)20,2]
-    img1_x = img1_kps[:, 0].cpu()           # ORIGINAL CODE                # img1_kps should be [(num of kps)20,2]
-    
-                        
+    img1_x = img1_kps[:, 0].cpu()           # ORIGINAL CODE                # img1_kps should be [(num of kps)20,2]                    
     img1_y, img1_x = img1_y.detach().numpy(), img1_x.detach().numpy()
     img1_y_patch = (num_patches / img_size * img1_y).astype(np.int32)
     img1_x_patch = (num_patches / img_size * img1_x).astype(np.int32)
@@ -301,9 +292,8 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
         raise ValueError('Unknown distance metric')
     
     # Get nearest neighors
-    # multi-view, its 'img1_patch_idx shape (10, 2)'
+    # multi-view, its 'img1_patch_idx shape (num_poses, 2)'
     # for one-view, its 'img1_patch_idx shape (1, 2)'
-    print('img1_patch_idx shape', img1_patch_idx.shape)
     
     nn_1_to_2 = torch.argmax(sim_1_to_2[img1_patch_idx], dim=1)
     # nn_y_patch = nn_1_to_2 // num_patches # this line gives deprecated warning so updated to the below line. 
@@ -314,34 +304,24 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
     
     kps_1_to_2 = torch.stack([nn_x, nn_y]).permute(1, 0)
     
-
     ###   FOR CYCLE CONSISTENCY CHECK   ### 
     sim_2_to_1 = torch.transpose(sim_1_to_2, 0, 1)
     
     # Get patch index for the keypoints
     # img1_kps should be 2D [(num of kps)20,2]
-    
-    print('kps_1_to_2.shape', kps_1_to_2.shape)
-    print('kps_1_to_2[:, 1].shape', kps_1_to_2[:, 1].shape)
-    print('kps_1_to_2[:, 0].shape', kps_1_to_2[:, 0].shape)
-    
     img1_y = kps_1_to_2[:, 1].cpu()             # ORIGINAL
     img1_x = kps_1_to_2[:, 0].cpu()             # ORIGINAL
-    
-                         
     img1_y, img1_x = img1_y.detach().numpy(), img1_x.detach().numpy()
     img1_y_patch = (num_patches / img_size * img1_y).astype(np.int32)
     img1_x_patch = (num_patches / img_size * img1_x).astype(np.int32)
     img2_patch_idx = num_patches * img1_y_patch + img1_x_patch
     
-
     nn_2_to_1 = torch.argmax(sim_2_to_1[img2_patch_idx], dim=1)
     
     nn_x_patch = nn_2_to_1 % num_patches
     nn_x = (nn_x_patch - 1) * stride + stride + patch_size // 2 - .5
     nn_y = (nn_y_patch - 1) * stride + stride + patch_size // 2 - .5
     kps_2_to_1 = torch.stack([nn_x, nn_y]).permute(1, 0)
-    
     
     img2 = draw_correspondences_1_image(kps_1_to_2, img2, index=index) #, color = None)
     
