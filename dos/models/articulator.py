@@ -56,6 +56,7 @@ class Articulator(BaseModel):
         path_to_save_images,
         num_pose,
         num_sample_bone_line,
+        mode_kps_selection,
         # encoder=None,
         enable_texture_predictor=True,
         texture_predictor=None,
@@ -70,6 +71,7 @@ class Articulator(BaseModel):
         self.path_to_save_images = path_to_save_images
         self.num_pose = num_pose
         self.num_sample_bone_line = num_sample_bone_line
+        self.mode_kps_selection = mode_kps_selection
         # self.encoder = encoder  # encoder TODO: should be part of the predictor?
         self.enable_texture_predictor = enable_texture_predictor
         self.texture_predictor = (
@@ -133,15 +135,11 @@ class Articulator(BaseModel):
         
         eroded_mask = self.mask_erode_tensor(rendered_mask)
             
-        kps_fr_sample_farthest_points = False
-        if kps_fr_sample_farthest_points:
+        if self.mode_kps_selection == "kps_fr_sample_on_bone_line":
+            kps_img_resolu, bones_midpts_projected_in_2D = self.kps_fr_sample_on_bone_line(bones, mvp, articulated_mesh, visible_vertices, self.num_sample_bone_line, eroded_mask)
+        elif self.mode_kps_selection == "kps_fr_sample_farthest_points":
             kps_img_resolu = self.kps_fr_sample_farthest_points(visible_vertices, articulated_mesh, eroded_mask)
         
-        kps_fr_sample_on_bone_line = True
-        if kps_fr_sample_on_bone_line:
-            kps_img_resolu, bones_midpts_projected_in_2D = self.kps_fr_sample_on_bone_line(bones, mvp, articulated_mesh, visible_vertices, self.num_sample_bone_line, eroded_mask)
-            
-            
         output_dict = {}
         cycle_consi_kps_tensor_stack = torch.empty(0, kps_img_resolu.shape[1], 2, device=kps_img_resolu.device)
             
@@ -395,8 +393,6 @@ class Articulator(BaseModel):
             input_image = renderer_outputs["image_pred"][i],
             image_fr_path = False
             )
-            
-            #target_img_rgb, target_img_decoded = target_img_fr_sd.run_experiment()
             
             target_image_PIL = F.to_pil_image(target_img_rgb[0])
             #rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)

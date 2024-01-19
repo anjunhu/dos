@@ -28,6 +28,7 @@ model:
   path_to_save_images: /work/oishideb/dos_output_files/cow
   num_pose: 25
   num_sample_bone_line: 2
+  mode_kps_selection: "kps_fr_sample_on_bone_line" # Options are kps_fr_sample_on_bone_line OR kps_fr_sample_farthest_points
   shape_template_path: /scratch/shared/beegfs/tomj/projects/articulator/data/synth_animals/shape_templates/cow_female-rd/Cow-OBJ-v01/Cow_Highpoly.obj
   enable_texture_predictor: False
 
