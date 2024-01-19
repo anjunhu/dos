@@ -28,8 +28,8 @@ class ViTExtractor:
     """
     
     # Newly Added
-    # Class variable to cache models - in memory
-    model_cache = {}
+    # # Class variable to cache models - in memory
+    # model_cache = {}
 
     def __init__(self, model_type: str = 'dino_vits8', stride: int = 4, model: nn.Module = None, device: str = 'cuda'):
         """
@@ -75,11 +75,12 @@ class ViTExtractor:
                            vit_base_patch16_224]
         :return: the model
         """
-        #torch.hub._validate_not_a_forked_repo=lambda a,b,c: True
+        #torch.hub._validate_not_a_forked_repo=lambda a,b,c: True    # ORIGINAL CODE
         
-        # Check if the model is in the cache
-        if model_type in ViTExtractor.model_cache:
-            return ViTExtractor.model_cache[model_type]
+        # Newly Added
+        # # Check if the model is in the cache
+        # if model_type in ViTExtractor.model_cache:
+        #     return ViTExtractor.model_cache[model_type]
         
         if 'v2' in model_type:
             model = torch.hub.load('facebookresearch/dinov2', model_type)
@@ -100,8 +101,8 @@ class ViTExtractor:
             model.load_state_dict(temp_state_dict)
             
         # Newly Added
-        # Cache the model for future use
-        ViTExtractor.model_cache[model_type] = model
+        # # Cache the model for future use
+        # ViTExtractor.model_cache[model_type] = model
         
         return model
 

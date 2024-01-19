@@ -28,252 +28,26 @@ import matplotlib.pyplot as plt
 from ..utils import utils, multi_view
 from dos.components.fuse.compute_correspond import compute_correspondences_sd_dino
 from dos.utils.correspondence import resize, draw_correspondences_1_image, padding_tensor
-
 from ..components.sd_model_text_to_image.diffusion_sds import StableDiffusionForTargetImg
-
+from dos.components.fuse.extractor_sd import load_model
 # UNCOMMENT IT LATER
 # from ..components.DeepFlyod_text2image_inference import DeepFloydIF
 
-from dos.components.fuse.extractor_sd import load_model
-
-# VER = f'v1-5';  # version of diffusion, v1-3, v1-4, v1-5, v2-1-base
-# TIMESTEP = 100; # timestep for diffusion, [0, 1000], 0 for no noise added
-# # INDICES=[2,5,8,11] 
-
+# LOADING ODISE MODEL
 start_time = time.time()
+# 'diffusion_ver' options are v1-5, v1-3, v1-4, v1-5, v2-1-base
 # 'image_size' is for the sd input for the Fuse model i.e 960
+# 'timestep' for diffusion should be in the range [0, 1000], 0 for no noise added
 # 'block_indices' is selecting different layers from the UNet decoder for extracting sd features, only the first three are used by default
 sd_model, sd_aug = load_model(config_path ='Panoptic/odise_label_coco_50e.py', diffusion_ver = f'v1-5', image_size=960, num_timesteps = 100, block_indices=tuple([2,5,8,11]))    
 end_time = time.time()  # Record the end time
 print(f"The Fuse model loading took {end_time - start_time} seconds to run.\n")
-
-# with open('log.txt', 'a') as file:
-#     file.write(f"The Fuse model loading took {end_time - start_time} seconds to run.\n")
-        
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-def closest_visible_points(bones_midpts, mesh_v_pos, visible_vertices):
-    """
-    Find the closest visible points in the mesh to the given bone midpoints.
-    
-    Parameters:
-    - bones_midpts: Tensor of bone midpoints with shape [Batch size, 20, 3]
-    - mesh_v_pos: Tensor of mesh vertex positions with shape [Batch size, 31070, 3]
-    - visible_vertices: Tensor indicating visibility of each vertex with shape [Batch size, 31070]
-    
-    Returns:
-    - closest_points: Tensor of closest visible points with shape [Batch size, 20, 3]
-    """
-    
-    # Expand dimensions for broadcasting
-    bones_midpts_exp = bones_midpts.unsqueeze(2)
-    mesh_v_pos_exp = mesh_v_pos.unsqueeze(1)
-    
-    # Compute squared distances between each bone midpoint and all mesh vertices
-    dists = ((bones_midpts_exp - mesh_v_pos_exp) ** 2).sum(-1)
-    
-    # Mask occluded vertices by setting their distance to a high value
-    max_val = torch.max(dists).item() + 1
-    occluded_mask = (1 - visible_vertices).bool().unsqueeze(1)
-    dists.masked_fill_(occluded_mask, max_val)
-    
-    # Get the index of the minimum distance for each bone midpoint
-    _, closest_idx = dists.min(-1)
-    
-    # Gather the closest visible points from mesh_v_pos using the computed indices
-    batch_indices = torch.arange(bones_midpts.size(0), device=closest_idx.device).unsqueeze(1)
-    closest_points = mesh_v_pos[batch_indices, closest_idx, :]
-    
-    return closest_points
-
-    
-def mask_erode_tensor(batch_of_masks):
-
-    # batch_of_masks is a tensor of shape (batch_size, channels, height, width) containing binary masks
-    # Set the kernel size for erosion (e.g., 3x3)
-    kernel_size = (1, 1)
-    
-    erode_off_half = False
-    if erode_off_half:
-        kernel_size = (15, 1)
-
-    # Create a custom erosion function for binary masks
-    def binary_erosion(mask, kernel_size):
-        # Pad the mask to handle border pixels
-        padding = [k // 2 for k in kernel_size]
-        mask = nn_functional.pad(mask, padding, mode='constant', value=0)
-
-        # Convert mask to a binary tensor (0 or 1)
-        binary_mask = (mask > 0).float()
-
-        # Create a tensor of ones as the kernel
-        kernel = torch.ones(1, 1, *kernel_size).to(mask.device)
-
-        # Perform erosion using a convolution
-        eroded_mask = nn_functional.conv2d(binary_mask, kernel)
-
-        # Set eroded values to 1 and the rest to 0
-        eroded_mask = (eroded_mask == kernel.numel()).float()
-        
-        # ADDED next two lines
-        # Mask out the upper part of the image to keep only the bottom part (legs)
-        if erode_off_half:
-            height = eroded_mask.shape[2]
-            eroded_mask[:, :height//2, :] = 0
-
-        return eroded_mask
-
-    # Loop through the batch and apply erosion to each mask
-    eroded_masks = []
-    for i in range(batch_of_masks.shape[0]):
-        mask = batch_of_masks[i:i+1]  # Extract a single mask from the batch
-        eroded_mask = binary_erosion(mask, kernel_size)
-        eroded_masks.append(eroded_mask)
-
-    # Stack the results into a single tensor
-    eroded_masks = torch.cat(eroded_masks, dim=0)
-    
-    # eroded_masks is a tensor of shape (batch_size, height, width) containing binary masks
-    # Convert the tensors to numpy arrays and scale them to 0-255 range
-    eroded_masks_np = (eroded_masks.cpu().numpy() * 255).astype(np.uint8)
-
-    # Loop through the batch and save each mask as an image
-    for i in range(eroded_masks_np.shape[0]):
-        mask = eroded_masks_np[i]
-        pil_image = Image.fromarray(mask)
-        #pil_image.save(f'eroded_mask_{i}.png')
-
-        #Now, eroded_masks contains the eroded masks for each mask in the batch
-
-    # eroded_masks shape is torch.Size([4, 254, 256])
-    return eroded_masks
-
-
-def get_vertices_inside_mask_old(projected_visible_v_in_2D, eroded_mask):
-    # Resultant list
-    vertices_inside_mask = []
-    
-    # Iterate over the batch size
-    for i in range(projected_visible_v_in_2D.shape[0]):
-        # Filter the vertices for the current batch
-        current_vertices = projected_visible_v_in_2D[i]
-        
-        # Make sure the vertex coordinates are in int format and within bounds
-        valid_vertices = current_vertices.int().clamp(min=0, max=255).long()
-        
-        # Check if these vertices lie inside the mask
-        mask_values = eroded_mask[i, valid_vertices[:, 1], valid_vertices[:, 0]]
-        
-        # Filter out the vertices based on the mask
-        inside_mask = current_vertices[mask_values == 1]
-        
-        # Append to the resultant list
-        vertices_inside_mask.append(inside_mask)
-    
-    return vertices_inside_mask
-
-
-def get_vertices_inside_mask(projected_visible_v_in_2D, eroded_mask):
-    # Resultant list
-    vertices_inside_mask = []
-    
-    # To determine the maximum number of vertices that are inside the mask for all batches
-    max_vertices = 0
-    
-    # Iterate over the batch size
-    for i in range(projected_visible_v_in_2D.shape[0]):
-        # Filter the vertices for the current batch
-        current_vertices = projected_visible_v_in_2D[i]
-        
-        # Make sure the vertex coordinates are in int format and within bounds
-        valid_vertices = current_vertices.int().clamp(min=0, max=255).long()
-        
-        # Check if these vertices lie inside the mask
-        mask_values = eroded_mask[i, valid_vertices[:, 1], valid_vertices[:, 0]]
-        
-        # Filter out the vertices based on the mask
-        inside_mask = current_vertices[mask_values == 1]
-        
-        # Update the max_vertices value
-        max_vertices = max(max_vertices, inside_mask.shape[0])
-        
-        # Append to the resultant list
-        vertices_inside_mask.append(inside_mask)
-    
-    # Pad each tensor in the list to have max_vertices vertices
-    for i in range(len(vertices_inside_mask)):
-        padding = max_vertices - vertices_inside_mask[i].shape[0]
-        if padding > 0:
-            padding_tensor = torch.zeros((padding, 2)).to(vertices_inside_mask[i].device)
-            vertices_inside_mask[i] = torch.cat([vertices_inside_mask[i], padding_tensor], dim=0)
-    
-    # Convert the list of tensors to a single tensor
-    vertices_inside_mask = torch.stack(vertices_inside_mask, dim=0)
-    
-    return vertices_inside_mask
-
-def get_closest_vertices_fr_mask(projected_visible_v_in_2D, eroded_mask):
-    # Resultant tensor with same shape as projected_visible_v_in_2D
-    closest_vertices = torch.zeros_like(projected_visible_v_in_2D)
-
-    # Iterate over the batch size
-    for i in range(projected_visible_v_in_2D.shape[0]):
-        # Get the indices of all points in the eroded_mask where the value is 1
-        mask_indices = torch.nonzero(eroded_mask[i] == 1, as_tuple=False).float()
-
-        # Iterate over the keypoints
-        for j in range(projected_visible_v_in_2D.shape[1]):
-            # Initialize distances
-            distances = torch.cdist(projected_visible_v_in_2D[i, j, :].unsqueeze(0), mask_indices).squeeze(0)
-            min_distance_idx = torch.argmin(distances)
-
-            # Store the x,y coordinate of the closest point in the result tensor
-            closest_vertices[i, j, :] = mask_indices[min_distance_idx]
-
-            # Ensure that the closest vertex is inside the mask
-            y, x = closest_vertices[i, j, :].long()
-            while eroded_mask[i, y, x] != 1:
-                distances[min_distance_idx] = float('inf')  # Set the current minimum distance to infinity
-                min_distance_idx = torch.argmin(distances)  # Find the new minimum distance index
-                closest_vertices[i, j, :] = mask_indices[min_distance_idx]
-                y, x = closest_vertices[i, j, :].long()
-
-            # print(f'closest_vertices {closest_vertices[i, j, :]} and projected_visible_v_in_2D {projected_visible_v_in_2D[i, j, :]}')
-
-    return closest_vertices
-
-def sample_points_on_line(pt1, pt2, num_samples):
-    """
-    Sample points on lines defined by pt1 and pt2, excluding the endpoints.
-    
-    Parameters:
-    - pt1: Tensor of shape [Batch size, 20, 3] representing the first endpoints
-    - pt2: Tensor of shape [Batch size, 20, 3] representing the second endpoints
-    - num_samples: Number of points to sample on each line
-    
-    Returns:
-    - sampled_points: Tensor of shape [Batch size, 20, num_samples, 3] containing the sampled points
-    """
-    
-    # Create a tensor for linear interpolation
-    alpha = torch.linspace(0, 1, num_samples + 2)[1:-1].to(pt1.device)  # Exclude 0 and 1 to avoid endpoints
-    alpha = alpha.unsqueeze(0).unsqueeze(0).unsqueeze(-1)  # Shape: [1, 1, num_samples, 1]
-    
-    # Linear interpolation formula: (1 - alpha) * pt1 + alpha * pt2
-    sampled_points = (1 - alpha) * pt1.unsqueeze(2) + alpha * pt2.unsqueeze(2)
-    
-    # Reshape to [Batch size, 100, 3]
-    batch_size = pt1.size(0)
-    sampled_points = sampled_points.reshape(batch_size, -1, 3)
-    
-    return sampled_points
 
 
 class Articulator(BaseModel):
     """
     Articulator predicts instance shape parameters (instance shape) - optimisation based - predictor takes only id as input
     """
-
     # TODO: set default values for the parameters (dataclasses have a nice way of doing it
     #   but it's not compatible with torch.nn.Module)
     
@@ -282,7 +56,7 @@ class Articulator(BaseModel):
         path_to_save_images,
         num_pose,
         num_sample_bone_line,
-        encoder=None,
+        # encoder=None,
         enable_texture_predictor=True,
         texture_predictor=None,
         bones_predictor=None,
@@ -290,12 +64,13 @@ class Articulator(BaseModel):
         renderer=None,
         shape_template_path=None,
         sd_Text_to_Target_Img=None,
+        device = "cuda"
     ):
         super().__init__()
         self.path_to_save_images = path_to_save_images
         self.num_pose = num_pose
         self.num_sample_bone_line = num_sample_bone_line
-        self.encoder = encoder  # encoder TODO: should be part of the predictor?
+        # self.encoder = encoder  # encoder TODO: should be part of the predictor?
         self.enable_texture_predictor = enable_texture_predictor
         self.texture_predictor = (
             texture_predictor if texture_predictor is not None else TexturePredictor()
@@ -303,7 +78,7 @@ class Articulator(BaseModel):
         self.bones_predictor = (
             bones_predictor if bones_predictor is not None else BonesEstimator()
         )
-        # TODO: implement articulation predictor
+        # Articulation predictor
         self.articulation_predictor = (articulation_predictor if articulation_predictor else ArticulationPredictor())
         
         self.renderer = renderer if renderer is not None else Renderer()
@@ -315,6 +90,7 @@ class Articulator(BaseModel):
         
         self.sd_Text_to_Target_Img = sd_Text_to_Target_Img if sd_Text_to_Target_Img is not None else StableDiffusionForTargetImg()
         
+        self.device = device
 
     def _load_shape_template(self, shape_template_path):
         return load_mesh(shape_template_path)
@@ -355,7 +131,7 @@ class Articulator(BaseModel):
         #     file.write(f"The 'get_visible_vertices' took {end_time - start_time} seconds to run.\n")
         print(f"The get_visible_vertices function took {end_time - start_time} seconds to run.")
         
-        eroded_mask = mask_erode_tensor(rendered_mask)
+        eroded_mask = self.mask_erode_tensor(rendered_mask)
             
         kps_fr_sample_farthest_points = False
         if kps_fr_sample_farthest_points:
@@ -365,7 +141,7 @@ class Articulator(BaseModel):
         if kps_fr_sample_on_bone_line:
             kps_img_resolu, bones_midpts_projected_in_2D = self.kps_fr_sample_on_bone_line(bones, mvp, articulated_mesh, visible_vertices, self.num_sample_bone_line, eroded_mask)
             
-        
+            
         output_dict = {}
         cycle_consi_kps_tensor_stack = torch.empty(0, kps_img_resolu.shape[1], 2, device=kps_img_resolu.device)
             
@@ -413,16 +189,15 @@ class Articulator(BaseModel):
             # draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
             
             rendered_image_with_kps = draw_correspondences_1_image(kps_1_batch, rendered_image_PIL, index = 0) #, color='yellow')              #[-6:]
-            # Set the background color to grey
-            plt.gcf().set_facecolor('grey')
+            # # Set the background color to grey
+            # plt.gcf().set_facecolor('grey')
+            
             ## For now commented out Loss print out
             ## plt.text(80, 0.95, f'Rendered Img ; Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
             rendered_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_rendered_image_with_kps.png', bbox_inches='tight') 
             
-            # FIX IT
-            # plt.text(80, 0.95, f'Target Img', verticalalignment='top', horizontalalignment='left', color = 'black', fontsize ='11')
-            # Set the background color to grey
-            plt.gcf().set_facecolor('grey')
+            # # Set the background color to grey
+            # plt.gcf().set_facecolor('grey')
             target_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_target.png', bbox_inches='tight')
                     
             rendered_image_with_kps_list.append(rendered_image_with_kps)
@@ -433,8 +208,9 @@ class Articulator(BaseModel):
             loss = nn_functional.l1_loss(kps_1_batch, cycle_consi_corres_kps, reduction='mean')
             # draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
             # plt.text(80, 0.95, f' Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
-            # Set the background color to grey
-            plt.gcf().set_facecolor('grey')
+            
+            # # Set the background color to grey
+            # plt.gcf().set_facecolor('grey')
             plt.text(80, 0.95, f'Cycle Consistency', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
             cycle_consi_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_cycle.png', bbox_inches='tight')
             
@@ -452,18 +228,18 @@ class Articulator(BaseModel):
             # Update the Target kps after CYCLE CONSISTENCY CHECK
             corres_target_kps = corres_target_kps[mask]
             
-            
             rendered_image_with_kps_cyc_check = draw_correspondences_1_image(kps_img_resolu, rendered_image_PIL, index = 0) #, color='yellow')              #[-6:]
             
-            # Set the background color to grey
-            plt.gcf().set_facecolor('grey')
+            # # Set the background color to grey
+            # plt.gcf().set_facecolor('grey')
             plt.text(30, 0.95, f'Final Rendered Img after Eroded Mask & Cycle Consi Check', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
-            ## for now
-            ##  plt.text(80, 40, f'Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
+            
+            ## For now commented Loss printout
+            ## plt.text(80, 40, f'Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
             rendered_image_with_kps_cyc_check.savefig(f'{self.path_to_save_images}/{index}_rendered_image_with_kps_after_cyclic_check.png', bbox_inches='tight') 
             
-            # Set the background color to grey
-            plt.gcf().set_facecolor('grey')    
+            # # Set the background color to grey
+            # plt.gcf().set_facecolor('grey')    
             target_image_with_kps_cyc_check = draw_correspondences_1_image(corres_target_kps, target_image_PIL, index = 0) #, color='yellow')              #[-6:]
             target_image_with_kps_cyc_check.savefig(f'{self.path_to_save_images}/{index}_target_image_with_kps_after_cyclic_check.png', bbox_inches='tight') 
             plt.close()    
@@ -479,10 +255,9 @@ class Articulator(BaseModel):
         # Find the maximum length
         max_length = max(len(item) for item in kps_img_resolu_list if hasattr(item, '__len__'))
         
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         # Pad tensors in both lists
-        padded_kps_img_resolu_list = [padding_tensor(tensor.to(device), max_length, device) for tensor in kps_img_resolu_list]
-        padded_corres_target_kps_list = [padding_tensor(tensor.to(device), max_length, device) for tensor in corres_target_kps_list]
+        padded_kps_img_resolu_list = [padding_tensor(tensor.to(self.device), max_length, self.device) for tensor in kps_img_resolu_list]
+        padded_corres_target_kps_list = [padding_tensor(tensor.to(self.device), max_length, self.device) for tensor in corres_target_kps_list]
         
         
         output_dict = {
@@ -493,8 +268,8 @@ class Articulator(BaseModel):
         "cycle_consi_image_with_kps": cycle_consi_image_with_kps_list,
         "rendered_image_with_kps_list_after_cyc_check": rendered_image_with_kps_list_after_cyc_check,
         "target_image_with_kps_list_after_cyc_check": target_image_with_kps_list_after_cyc_check
-        }
-                
+        }        
+        
         return output_dict
 
     
@@ -528,7 +303,7 @@ class Articulator(BaseModel):
         print(f"The articulation_predictor function took {end_time - start_time} seconds to run.")
                 
         # NO BONE ROTATIONS
-        # bones_rotations = torch.zeros(batch_size, num_bones, 3, device=mesh.v_pos.device)
+        # bones_rotations = torch.zeros(batch_size, num_bones, 3, self.device=mesh.v_pos.device)
         
         # DUMMY BONE ROTATIONS - pertrub the bones rotations (only to test the implementation)
         # bones_rotations = bones_rotations + torch.randn_like(bones_rotations) * 0.1
@@ -563,10 +338,7 @@ class Articulator(BaseModel):
             start_time = time.time()
             material = self.texture_predictor
             end_time = time.time()
-
-            with open('log.txt', 'a') as file:
-                file.write(f"The function took {end_time - start_time} seconds to run.\n")
-                
+            print(f"The function took {end_time - start_time} seconds to run.\n")
         else:
             # if texture predictor is not enabled, use the loaded material from the mesh
             material = mesh.material
@@ -576,12 +348,13 @@ class Articulator(BaseModel):
             
             # For Single View
             # # pose shape is [1,12]
-            pose = geometry_utils.blender_camera_matrix_to_magicpony_pose(
-                batch["camera_matrix"]
-            )
+            # pose = geometry_utils.blender_camera_matrix_to_magicpony_pose(
+            #     batch["camera_matrix"]
+            # )
+            
             # For Multi View
-            # # pose shape is [num_pose, 12]
-            # pose, pose_directions = multi_view.rand_poses(self.num_pose, device=torch.device('cuda:0'), theta=90, phi_range=[0, 360])
+            # pose shape is [num_pose, 12]
+            pose, pose_directions = multi_view.rand_poses(self.num_pose, device=self.device, theta=90, phi_range=[0, 360])
         else:
             pose=batch["pose"]
         
@@ -674,8 +447,8 @@ class Articulator(BaseModel):
         # Computes the loss between the source and target keypoints
         print('Calculating l1 loss')
         # loss = nn_functional.mse_loss(rendered_keypoints, target_keypoints, reduction='mean')
-        model_outputs["rendered_kps"] = model_outputs["rendered_kps"].to(device)
-        model_outputs["target_corres_kps"] = model_outputs["target_corres_kps"].to(device)
+        model_outputs["rendered_kps"] = model_outputs["rendered_kps"].to(self.device)
+        model_outputs["target_corres_kps"] = model_outputs["target_corres_kps"].to(self.device)
 
         loss = nn_functional.l1_loss(model_outputs["rendered_kps"], model_outputs["target_corres_kps"], reduction='mean')
         
@@ -718,7 +491,7 @@ class Articulator(BaseModel):
     ## Saving all poses without keypoints visualisation
     def save_all_poses_without_kps(self, articulated_mesh, material, path_to_save_images):
         
-        pose, _ = multi_view.rand_poses(self.num_pose, device=torch.device('cuda:0'), theta=90, phi_range=[0, 360])
+        pose, _ = multi_view.rand_poses(self.num_pose, device=self.device, theta=90, phi_range=[0, 360])
         
         renderer_outputs = self.renderer(
             articulated_mesh,
@@ -793,13 +566,13 @@ class Articulator(BaseModel):
         
         bones_midpts_in_3D = (bones[:, :, 0, :] + bones[:, :, 1, :]) / 2.0        # This is in 3D the shape is torch.Size([2, 20, 3])
         
-        # NEWLY ADDED: SAMPLE POINTS ON BONE LINE
-        bones_midpts_in_3D = sample_points_on_line(bone_end_pt_1_3D, bone_end_pt_2_3D, num_sample_bone_line)
+        # SAMPLE POINTS ON BONE LINE
+        bones_midpts_in_3D = self.sample_points_on_line(bone_end_pt_1_3D, bone_end_pt_2_3D, num_sample_bone_line)
         
         bones_midpts_projected_in_2D = geometry_utils.project_points(bones_midpts_in_3D, mvp)
     
         start_time = time.time()
-        closest_midpts = closest_visible_points(bones_midpts_in_3D, articulated_mesh.v_pos, visible_vertices) # , eroded_mask)
+        closest_midpts = self.closest_visible_points(bones_midpts_in_3D, articulated_mesh.v_pos, visible_vertices) # , eroded_mask)
         
         end_time = time.time()  # Record the end time
         # with open('log.txt', 'a') as file:
@@ -817,7 +590,7 @@ class Articulator(BaseModel):
         
         start_time = time.time()
         ## get_vertices_inside_mask
-        vertices_inside_mask = get_vertices_inside_mask(pixel_projected_visible_v_in_2D, eroded_mask)
+        vertices_inside_mask = self.get_vertices_inside_mask(pixel_projected_visible_v_in_2D, eroded_mask)
         
         end_time = time.time()  # Record the end time
         # with open('log.txt', 'a') as file:
@@ -827,8 +600,8 @@ class Articulator(BaseModel):
     
         kps_img_resolu = (vertices_inside_mask/256) * 840
         
-        bone_end_pt_1 = closest_visible_points(bone_end_pt_1_3D, articulated_mesh.v_pos, visible_vertices) # , eroded_mask)
-        bone_end_pt_2 = closest_visible_points(bone_end_pt_2_3D, articulated_mesh.v_pos, visible_vertices) # , eroded_mask)
+        bone_end_pt_1 = self.closest_visible_points(bone_end_pt_1_3D, articulated_mesh.v_pos, visible_vertices) # , eroded_mask)
+        bone_end_pt_2 = self.closest_visible_points(bone_end_pt_2_3D, articulated_mesh.v_pos, visible_vertices) # , eroded_mask)
         
         # bone_end_pt_1_in_2D_cls = geometry_utils.project_points(bone_end_pt_1, mvp)
         # bone_end_pt_2_in_2D_cls = geometry_utils.project_points(bone_end_pt_2, mvp)
@@ -837,7 +610,7 @@ class Articulator(BaseModel):
         
         bones_all = torch.cat((bone_end_pt_1, bone_end_pt_2), dim=1)
         
-        bones_all = closest_visible_points(bones_all, articulated_mesh.v_pos, visible_vertices) # , eroded_mask)
+        bones_all = self.closest_visible_points(bones_all, articulated_mesh.v_pos, visible_vertices) # , eroded_mask)
         # bones_closest_pts_2D_proj_all_kp40 = geometry_utils.project_points(bones_all, mvp)
         
         return kps_img_resolu, bones_midpts_projected_in_2D
@@ -877,7 +650,7 @@ class Articulator(BaseModel):
     
         # Convert to Pixel Coordinates of the mask
         pixel_projected_visible_v_in_2D = (projected_visible_v_in_2D + 1) * eroded_mask.size(1)/2
-        vertices_inside_mask = get_vertices_inside_mask(pixel_projected_visible_v_in_2D, eroded_mask)
+        vertices_inside_mask = self.get_vertices_inside_mask(pixel_projected_visible_v_in_2D, eroded_mask)
         kps_img_resolu = (vertices_inside_mask/256) * 840
         
         # project vertices/keypoints example
@@ -891,4 +664,163 @@ class Articulator(BaseModel):
         
         return kps_img_resolu
     
+
+    def closest_visible_points(self, bones_midpts, mesh_v_pos, visible_vertices):
+        """
+        Find the closest visible points in the mesh to the given bone midpoints.
+
+        Parameters:
+        - bones_midpts: Tensor of bone midpoints with shape [Batch size, 20, 3]
+        - mesh_v_pos: Tensor of mesh vertex positions with shape [Batch size, 31070, 3]
+        - visible_vertices: Tensor indicating visibility of each vertex with shape [Batch size, 31070]
+
+        Returns:
+        - closest_points: Tensor of closest visible points with shape [Batch size, 20, 3]
+        """
+
+        # Expand dimensions for broadcasting
+        bones_midpts_exp = bones_midpts.unsqueeze(2)
+        mesh_v_pos_exp = mesh_v_pos.unsqueeze(1)
+
+        # Compute squared distances between each bone midpoint and all mesh vertices
+        dists = ((bones_midpts_exp - mesh_v_pos_exp) ** 2).sum(-1)
+
+        # Mask occluded vertices by setting their distance to a high value
+        max_val = torch.max(dists).item() + 1
+        occluded_mask = (1 - visible_vertices).bool().unsqueeze(1)
+        dists.masked_fill_(occluded_mask, max_val)
+
+        # Get the index of the minimum distance for each bone midpoint
+        _, closest_idx = dists.min(-1)
+
+        # Gather the closest visible points from mesh_v_pos using the computed indices
+        batch_indices = torch.arange(bones_midpts.size(0), device=closest_idx.device).unsqueeze(1)
+        closest_points = mesh_v_pos[batch_indices, closest_idx, :]
+
+        return closest_points
+
     
+    def mask_erode_tensor(self, batch_of_masks):
+
+        # batch_of_masks is a tensor of shape (batch_size, channels, height, width) containing binary masks
+        # Set the kernel size for erosion (e.g., 3x3)
+        kernel_size = (1, 1)
+
+        erode_off_half = False
+        if erode_off_half:
+            kernel_size = (15, 1)
+
+        # Create a custom erosion function for binary masks
+        def binary_erosion(mask, kernel_size):
+            # Pad the mask to handle border pixels
+            padding = [k // 2 for k in kernel_size]
+            mask = nn_functional.pad(mask, padding, mode='constant', value=0)
+
+            # Convert mask to a binary tensor (0 or 1)
+            binary_mask = (mask > 0).float()
+
+            # Create a tensor of ones as the kernel
+            kernel = torch.ones(1, 1, *kernel_size).to(mask.device)
+
+            # Perform erosion using a convolution
+            eroded_mask = nn_functional.conv2d(binary_mask, kernel)
+
+            # Set eroded values to 1 and the rest to 0
+            eroded_mask = (eroded_mask == kernel.numel()).float()
+
+            # ADDED next two lines
+            # Mask out the upper part of the image to keep only the bottom part (legs)
+            if erode_off_half:
+                height = eroded_mask.shape[2]
+                eroded_mask[:, :height//2, :] = 0
+
+            return eroded_mask
+
+        # Loop through the batch and apply erosion to each mask
+        eroded_masks = []
+        for i in range(batch_of_masks.shape[0]):
+            mask = batch_of_masks[i:i+1]  # Extract a single mask from the batch
+            eroded_mask = binary_erosion(mask, kernel_size)
+            eroded_masks.append(eroded_mask)
+
+        # Stack the results into a single tensor
+        eroded_masks = torch.cat(eroded_masks, dim=0)
+
+        # eroded_masks is a tensor of shape (batch_size, height, width) containing binary masks
+        # Convert the tensors to numpy arrays and scale them to 0-255 range
+        eroded_masks_np = (eroded_masks.cpu().numpy() * 255).astype(np.uint8)
+
+        # Loop through the batch and save each mask as an image
+        for i in range(eroded_masks_np.shape[0]):
+            mask = eroded_masks_np[i]
+            pil_image = Image.fromarray(mask)
+            #pil_image.save(f'eroded_mask_{i}.png')
+
+        #Now, eroded_masks contains the eroded masks for each mask in the batch
+        # eroded_masks shape is torch.Size([4, 254, 256])
+        return eroded_masks
+
+    def get_vertices_inside_mask(self, projected_visible_v_in_2D, eroded_mask):
+        # Resultant list
+        vertices_inside_mask = []
+
+        # To determine the maximum number of vertices that are inside the mask for all batches
+        max_vertices = 0
+
+        # Iterate over the batch size
+        for i in range(projected_visible_v_in_2D.shape[0]):
+            # Filter the vertices for the current batch
+            current_vertices = projected_visible_v_in_2D[i]
+
+            # Make sure the vertex coordinates are in int format and within bounds
+            valid_vertices = current_vertices.int().clamp(min=0, max=255).long()
+
+            # Check if these vertices lie inside the mask
+            mask_values = eroded_mask[i, valid_vertices[:, 1], valid_vertices[:, 0]]
+
+            # Filter out the vertices based on the mask
+            inside_mask = current_vertices[mask_values == 1]
+
+            # Update the max_vertices value
+            max_vertices = max(max_vertices, inside_mask.shape[0])
+
+            # Append to the resultant list
+            vertices_inside_mask.append(inside_mask)
+
+        # Pad each tensor in the list to have max_vertices vertices
+        for i in range(len(vertices_inside_mask)):
+            padding = max_vertices - vertices_inside_mask[i].shape[0]
+            if padding > 0:
+                padding_tensor = torch.zeros((padding, 2)).to(vertices_inside_mask[i].device)
+                vertices_inside_mask[i] = torch.cat([vertices_inside_mask[i], padding_tensor], dim=0)
+
+        # Convert the list of tensors to a single tensor
+        vertices_inside_mask = torch.stack(vertices_inside_mask, dim=0)
+
+        return vertices_inside_mask
+
+    def sample_points_on_line(self, pt1, pt2, num_samples):
+        """
+        Sample points on lines defined by pt1 and pt2, excluding the endpoints.
+
+        Parameters:
+        - pt1: Tensor of shape [Batch size, 20, 3] representing the first endpoints
+        - pt2: Tensor of shape [Batch size, 20, 3] representing the second endpoints
+        - num_samples: Number of points to sample on each line
+
+        Returns:
+        - sampled_points: Tensor of shape [Batch size, 20, num_samples, 3] containing the sampled points
+        """
+
+        # Create a tensor for linear interpolation
+        alpha = torch.linspace(0, 1, num_samples + 2)[1:-1].to(pt1.device)  # Exclude 0 and 1 to avoid endpoints
+        alpha = alpha.unsqueeze(0).unsqueeze(0).unsqueeze(-1)  # Shape: [1, 1, num_samples, 1]
+
+        # Linear interpolation formula: (1 - alpha) * pt1 + alpha * pt2
+        sampled_points = (1 - alpha) * pt1.unsqueeze(2) + alpha * pt2.unsqueeze(2)
+
+        # Reshape to [Batch size, 100, 3]
+        batch_size = pt1.size(0)
+        sampled_points = sampled_points.reshape(batch_size, -1, 3)
+
+        return sampled_points

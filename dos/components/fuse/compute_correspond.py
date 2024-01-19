@@ -40,6 +40,25 @@ SIZE=960; # image size for the sd input # ORIGINAL CODE
 TIMESTEP = 100; # timestep for diffusion, [0, 1000], 0 for no noise added
 INDICES=[2,5,8,11] # select different layers of sd features, only the first three are used by default
 
+
+model_dict={'small':'dinov2_vits14',
+                'base':'dinov2_vitb14',
+                'large':'dinov2_vitl14',
+                'giant':'dinov2_vitg14'}
+
+model_type = model_dict[MODEL_SIZE] if DINOV2 else 'dino_vits8'
+stride = 14 if DINOV2 else 4 if ONLY_DINO else 8
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+start_time = time.time()
+extractor = ViTExtractor(model_type, stride, device=device)
+end_time = time.time()
+# # Open a file in append mode
+# with open('log.txt', 'a') as file:
+#     file.write(f"The ViTExtractor function took {end_time - start_time} seconds to run.\n")
+print(f'The ViTExtractor function took {end_time - start_time} seconds to run.')
+      
+
 # # Ensure to set the model to evaluation mode if you're doing inference
 # sd_model.eval()
 
@@ -48,31 +67,23 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
     
     img_size = 840 if DINOV2 else 240 if ONLY_DINO else 480    # ORIGINAL CODE # should it be 224 or 240, because 60 * stride(i.e 4) is 240
     
-    model_dict={'small':'dinov2_vits14',
-                'base':'dinov2_vitb14',
-                'large':'dinov2_vitl14',
-                'giant':'dinov2_vitg14'}
+    # model_dict={'small':'dinov2_vits14',
+    #             'base':'dinov2_vitb14',
+    #             'large':'dinov2_vitl14',
+    #             'giant':'dinov2_vitg14'}
     
-    model_type = model_dict[MODEL_SIZE] if DINOV2 else 'dino_vits8'
+    # model_type = model_dict[MODEL_SIZE] if DINOV2 else 'dino_vits8'
     layer = 11 if DINOV2 else 9
     if 'l' in model_type:
         layer = 23
     elif 'g' in model_type:
         layer = 39
     facet = 'token' if DINOV2 else 'key'
-    stride = 14 if DINOV2 else 4 if ONLY_DINO else 8
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    # stride = 14 if DINOV2 else 4 if ONLY_DINO else 8
+    # device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # indiactor = 'v2' if DINOV2 else 'v1'
     # model_size = model_type.split('vit')[-1]
-    
-    start_time = time.time()
-    extractor = ViTExtractor(model_type, stride, device=device)
-    end_time = time.time()
-    # # Open a file in append mode
-    # with open('log.txt', 'a') as file:
-    #     file.write(f"The ViTExtractor function took {end_time - start_time} seconds to run.\n")
-    print(f'The ViTExtractor function took {end_time - start_time} seconds to run.')
-        
+      
     patch_size = extractor.model.patch_embed.patch_size[0] if DINOV2 else extractor.model.patch_embed.patch_size
     num_patches = int(patch_size / stride * (img_size // patch_size - 1) + 1)   # num_patches is 60
     

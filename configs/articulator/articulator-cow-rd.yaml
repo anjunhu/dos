@@ -26,7 +26,7 @@ model:
     temperature: 0.05
 
   path_to_save_images: /work/oishideb/dos_output_files/cow
-  num_pose: 20
+  num_pose: 25
   num_sample_bone_line: 2
   shape_template_path: /scratch/shared/beegfs/tomj/projects/articulator/data/synth_animals/shape_templates/cow_female-rd/Cow-OBJ-v01/Cow_Highpoly.obj
   enable_texture_predictor: False
@@ -78,8 +78,8 @@ device: cuda:0
 learning_rate: 0.1  # tried with 0.01, 0.5, 0.9, 1
 
 # for debugging
-num_iterations: 30
-num_vis_iterations: 1
+num_iterations: 6
+num_vis_iterations: 6
 num_eval_iterations: 10
 save_checkpoint_freq: 50
 num_workers: 0
