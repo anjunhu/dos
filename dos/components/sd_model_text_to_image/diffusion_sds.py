@@ -243,7 +243,7 @@ if __name__ == '__main__':
         device=torch.device('cuda:0'),
         torch_dtype=torch.float16,
         cache_dir="/work/oishideb/cache/huggingface_hub",
-        output_dir='output-new',
+        output_dir='/work/oishideb/dos_output_files/cow/output-new',
         init_image_path='/users/oishideb/laam/dos/examples/data/cow.png',
         vis_name='cow-sds_latent-l2_image-600-lr1e-1.png',
         prompts=["a running cow"],
@@ -262,44 +262,3 @@ if __name__ == '__main__':
 
     # Call the fn run_experiment
     sd_text_to_target_img.run_experiment()
-
-
-
-# # %%
-# device = torch.device('cuda:0')
-# # cache_dir="/scratch/local/ssd/tomj/cache/huggingface_hub"
-# # cache_dir="/scratch/shared/beegfs/tomj/cache/huggingface_hub"
-# cache_dir = "/work/oishideb/cache/huggingface_hub"
-# sd = StableDiffusion(device, torch_dtype=torch.float16, cache_dir=cache_dir)
-
-# # %%
-# # settings
-# init_image_path = '/users/oishideb/laam/dos/examples/data/cow.png'
-
-# output_dir = 'output-new'
-# vis_name = 'cow-sds_latent-l2_image-600-lr1e-1.jpg'
-
-# # prompts = ['a cow']
-# prompts = ['a standing cow']
-# prompts = ['a running cow']
-# # prompts = ['a sitting cow']
-# negative_prompts = ['']
-
-# # mode = "sds_image"
-# # mode = "sds_latent"
-# mode = "sds_latent-l2_image"
-
-# # optimizer_class = torch.optim.Adam
-# optimizer_class = torch.optim.SGD
-# lr = 0.1
-# lr_l2 = 1e4
-# seed = 2
-
-# num_inference_steps = 50
-# guidance_scale = 100
-
-# # schedule = np.linspace(999, 0, num_inference_steps).astype('int32')
-# schedule = np.array([600] * num_inference_steps).astype('int32')
-
-# # %%
-# seed_everything(seed)

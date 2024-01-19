@@ -1,6 +1,5 @@
 import random
-random.seed(42) 
-
+random.seed(42)
 import os
 # # Set TORCH_HOME to a custom directory
 # os.environ['TORCH_HOME'] = '/work/oishideb/cache/torch_hub'
@@ -23,7 +22,6 @@ from .base import BaseModel
 from PIL import Image, ImageDraw
 import torchvision.transforms.functional as F
 import torch.nn.functional as nn_functional
-
 import matplotlib.pyplot as plt
 from ..utils import utils, multi_view
 from dos.components.fuse.compute_correspond import compute_correspondences_sd_dino
@@ -32,17 +30,6 @@ from ..components.sd_model_text_to_image.diffusion_sds import StableDiffusionFor
 from dos.components.fuse.extractor_sd import load_model
 # UNCOMMENT IT LATER
 # from ..components.DeepFlyod_text2image_inference import DeepFloydIF
-
-# LOADING ODISE MODEL
-start_time = time.time()
-# 'diffusion_ver' options are v1-5, v1-3, v1-4, v1-5, v2-1-base
-# 'image_size' is for the sd input for the Fuse model i.e 960
-# 'timestep' for diffusion should be in the range [0, 1000], 0 for no noise added
-# 'block_indices' is selecting different layers from the UNet decoder for extracting sd features, only the first three are used by default
-sd_model, sd_aug = load_model(config_path ='Panoptic/odise_label_coco_50e.py', diffusion_ver = f'v1-5', image_size=960, num_timesteps = 100, block_indices=tuple([2,5,8,11]))    
-end_time = time.time()  # Record the end time
-print(f"The Fuse model loading took {end_time - start_time} seconds to run.\n")
-
 
 class Articulator(BaseModel):
     """
@@ -57,7 +44,6 @@ class Articulator(BaseModel):
         num_pose,
         num_sample_bone_line,
         mode_kps_selection,
-        # encoder=None,
         enable_texture_predictor=True,
         texture_predictor=None,
         bones_predictor=None,
@@ -72,7 +58,6 @@ class Articulator(BaseModel):
         self.num_pose = num_pose
         self.num_sample_bone_line = num_sample_bone_line
         self.mode_kps_selection = mode_kps_selection
-        # self.encoder = encoder  # encoder TODO: should be part of the predictor?
         self.enable_texture_predictor = enable_texture_predictor
         self.texture_predictor = (
             texture_predictor if texture_predictor is not None else TexturePredictor()
@@ -93,6 +78,23 @@ class Articulator(BaseModel):
         self.sd_Text_to_Target_Img = sd_Text_to_Target_Img if sd_Text_to_Target_Img is not None else StableDiffusionForTargetImg()
         
         self.device = device
+        
+        # LOADING ODISE MODEL
+        start_time = time.time()
+        # 'diffusion_ver' options are v1-5, v1-3, v1-4, v1-5, v2-1-base
+        # 'image_size' is for the sd input for the Fuse model i.e 960
+        # 'timestep' for diffusion should be in the range [0, 1000], 0 for no noise added
+        # 'block_indices' is selecting different layers from the UNet decoder for extracting sd features, only the first three are used by default.
+        self.sd_model, self.sd_aug = load_model(
+            config_path='Panoptic/odise_label_coco_50e.py',
+            diffusion_ver='v1-5',
+            image_size=960,
+            num_timesteps=100,
+            block_indices=(2, 5, 8, 11)
+        )
+        end_time = time.time()  # Record the end time
+        print(f"The Fuse model loading took {end_time - start_time} seconds to run.\n")
+
 
     def _load_shape_template(self, shape_template_path):
         return load_mesh(shape_template_path)
@@ -136,7 +138,7 @@ class Articulator(BaseModel):
         eroded_mask = self.mask_erode_tensor(rendered_mask)
             
         if self.mode_kps_selection == "kps_fr_sample_on_bone_line":
-            kps_img_resolu, bones_midpts_projected_in_2D = self.kps_fr_sample_on_bone_line(bones, mvp, articulated_mesh, visible_vertices, self.num_sample_bone_line, eroded_mask)
+            kps_img_resolu = self.kps_fr_sample_on_bone_line(bones, mvp, articulated_mesh, visible_vertices, self.num_sample_bone_line, eroded_mask)
         elif self.mode_kps_selection == "kps_fr_sample_farthest_points":
             kps_img_resolu = self.kps_fr_sample_farthest_points(visible_vertices, articulated_mesh, eroded_mask)
         
@@ -175,7 +177,7 @@ class Articulator(BaseModel):
             
             
             start_time = time.time()
-            target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_1_batch, img2=target_image_PIL, index = index ,model=sd_model, aug=sd_aug)
+            target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_1_batch, img2=target_image_PIL, index = index ,model=self.sd_model, aug=self.sd_aug)
             end_time = time.time()  # Record the end time
             # with open('log.txt', 'a') as file:
             #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
@@ -352,7 +354,7 @@ class Articulator(BaseModel):
             
             # For Multi View
             # pose shape is [num_pose, 12]
-            pose, pose_directions = multi_view.rand_poses(self.num_pose, device=self.device, theta=90, phi_range=[0, 360])
+            pose, pose_directions = multi_view.rand_poses(self.num_pose, device=self.device)
         else:
             pose=batch["pose"]
         
@@ -487,7 +489,7 @@ class Articulator(BaseModel):
     ## Saving all poses without keypoints visualisation
     def save_all_poses_without_kps(self, articulated_mesh, material, path_to_save_images):
         
-        pose, _ = multi_view.rand_poses(self.num_pose, device=self.device, theta=90, phi_range=[0, 360])
+        pose, _ = multi_view.poses_along_azimuth(self.num_pose, device=self.device)
         
         renderer_outputs = self.renderer(
             articulated_mesh,
@@ -609,7 +611,7 @@ class Articulator(BaseModel):
         bones_all = self.closest_visible_points(bones_all, articulated_mesh.v_pos, visible_vertices) # , eroded_mask)
         # bones_closest_pts_2D_proj_all_kp40 = geometry_utils.project_points(bones_all, mvp)
         
-        return kps_img_resolu, bones_midpts_projected_in_2D
+        return kps_img_resolu
         
     
     def kps_fr_sample_farthest_points(self, visible_vertices, articulated_mesh, eroded_mask):
