@@ -7,8 +7,8 @@ import torch
 from dos.components.fuse.extractor_dino import ViTExtractor
 from dos.components.fuse.extractor_sd import process_features_and_mask, get_mask
 from tqdm import tqdm
-from dos.utils.correspondence import pairwise_sim, draw_correspondences_gathered, chunk_cosine_sim, co_pca, find_nearest_patchs, \
-                                draw_correspondences_lines, draw_correspondences_1_image, resize, draw_correspondences_1_image  #, get_n_colors
+from dos.utils.correspondence import pairwise_sim, chunk_cosine_sim, co_pca, find_nearest_patchs, \
+                                resize, draw_correspondences_1_image  #, get_n_colors
 import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn.functional as F

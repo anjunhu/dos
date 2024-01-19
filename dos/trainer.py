@@ -203,7 +203,7 @@ class Trainer:
 
         # rotation, translation, forward_aux = self.model(batch)
         
-        model_outputs, articulated_mesh = self.model(batch)
+        model_outputs, articulated_mesh, material = self.model(batch)
         
         metrics_dict = self.model.get_metrics_dict(model_outputs, batch)
         
@@ -235,7 +235,7 @@ class Trainer:
         self.model.save_all_poses_with_kps(model_outputs, self.path_to_save_img_per_iteration)      
         
         ## Saving all poses without keypoints visualisation
-        self.model.save_all_poses_without_kps(articulated_mesh, self.path_to_save_images)      
+        self.model.save_all_poses_without_kps(articulated_mesh, material, self.path_to_save_images)      
             
         return loss_dict["loss"], model_outputs
     

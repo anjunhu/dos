@@ -1,6 +1,3 @@
-##------- CODE mainly taken from the "Tale of 2 Features" paper (https://github.com/Junyi42/sd-dino/blob/master/utils/utils_correspondence.py), 
-##------- but further functions has been added to adapt to our project.----------------------------------------------------------
-
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -13,6 +10,54 @@ import cv2
 import os
 from matplotlib.patches import ConnectionPatch
 
+#---- This func is written by Oishi
+# Function to pad a tensor with zeros to the max_length
+def padding_tensor(tensor, max_length, device):
+    n = tensor.shape[0]
+    if n < max_length:
+        padding = max_length - n
+        # Ensuring the padding tensor is on the same device as the input tensor
+        padding_tensor = torch.zeros(padding, 2, device=device)
+        padded_tensor = torch.cat((tensor, padding_tensor), dim=0)
+        return padded_tensor
+    return tensor
+
+#---- This func is written by Oishi
+def draw_correspondences_1_image(points1: List[Tuple[float, float]], image1: Image.Image, index) -> plt.Figure:
+
+    num_points = len(points1)
+
+    if num_points > 15:
+        cmap = plt.get_cmap('viridis')
+    else:
+        cmap = ListedColormap(["red", "yellow", "blue", "lime", "magenta", "indigo", "orange", "cyan", "darkgreen",
+                            "maroon", "white", "black", "chocolate", "gray", "blueviolet"])
+    colors = np.array([cmap(x) for x in range(num_points)])
+    colors = cmap(np.linspace(0, 1, num_points))
+    radius1, radius2 = 0.03*max(image1.size), 0.01*max(image1.size)
+    
+    # plot a subfigure put image1 in the top, image2 in the bottom
+    fig, ax1 = plt.subplots(1, 1, figsize=(10, 5))
+    ax1.axis('off')
+
+    for idx, (point1, color) in enumerate(zip(points1, colors)):
+        x1, y1  = point1
+        circ1_1 = plt.Circle((x1, y1), radius1, facecolor=color, edgecolor='white', alpha=0.5)
+        circ1_2 = plt.Circle((x1, y1), radius2, facecolor=color, edgecolor='white')
+        #ax1.add_patch(circ1_1)
+        ax1.add_patch(circ1_2)
+        
+        # Adding an integer number next to the point
+        ax1.text(x1 + radius2, y1, str(idx), color='blue', fontsize=10, verticalalignment='center', horizontalalignment='left')
+    
+    # ax1.text(0.7, 0.95, f' Frame_{index}', verticalalignment='top', horizontalalignment='center', color = 'black', fontsize ='13', fontweight = 'bold', transform=ax1.transAxes)
+    ax1.imshow(image1)
+    plt.tight_layout()
+    
+    return fig
+
+
+##----- This func is taken from the "Tale of 2 Features" paper (https://github.com/Junyi42/sd-dino/blob/master/utils/utils_correspondence.py)
 def resize(img, target_res, resize=True, to_pil=True, edge=False):
     original_width, original_height = img.size
     original_channels = len(img.getbands())
@@ -54,7 +99,7 @@ def resize(img, target_res, resize=True, to_pil=True, edge=False):
         canvas = Image.fromarray(canvas)
     return canvas
 
-
+##----- This func is taken from the "Tale of 2 Features" paper (https://github.com/Junyi42/sd-dino/blob/master/utils/utils_correspondence.py)
 def find_nearest_patchs(mask1, mask2, image1, image2, features1, features2, mask=False, resolution=None, edit_image=None):
     
     def polar_color_map(image_shape):
@@ -161,66 +206,7 @@ def find_nearest_patchs(mask1, mask2, image1, image2, features1, features2, mask
 
     return nearest_patches_image, resized_image2, nearest_patches
 
-
-def find_nearest_patchs_replace(mask1, mask2, image1, image2, features1, features2, mask=False, resolution=128, draw_gif=False, save_path=None, gif_reverse=False):
-    
-    if resolution is not None: # resize the feature map to the resolution
-        features1 = F.interpolate(features1, size=resolution, mode='bilinear')
-        features2 = F.interpolate(features2, size=resolution, mode='bilinear')
-    
-    # resize the image to the shape of the feature map
-    resized_image1 = resize(image1, features1.shape[2], resize=True, to_pil=False)
-    resized_image2 = resize(image2, features2.shape[2], resize=True, to_pil=False)
-
-    if mask: # mask the features
-        resized_mask1 = F.interpolate(mask1.cuda().unsqueeze(0).unsqueeze(0).float(), size=features1.shape[2:], mode='nearest')
-        resized_mask2 = F.interpolate(mask2.cuda().unsqueeze(0).unsqueeze(0).float(), size=features2.shape[2:], mode='nearest')
-        features1 = features1 * resized_mask1.repeat(1, features1.shape[1], 1, 1)
-        features2 = features2 * resized_mask2.repeat(1, features2.shape[1], 1, 1)
-        # set where mask==0 a very large number
-        features1[(features1.sum(1)==0).repeat(1, features1.shape[1], 1, 1)] = 100000
-        features2[(features2.sum(1)==0).repeat(1, features2.shape[1], 1, 1)] = 100000
-    
-    features1_2d = features1.reshape(features1.shape[1], -1).permute(1, 0)
-    features2_2d = features2.reshape(features2.shape[1], -1).permute(1, 0)
-
-    resized_image1 = torch.tensor(resized_image1).to("cuda").float()
-    resized_image2 = torch.tensor(resized_image2).to("cuda").float()
-
-    mask1 = F.interpolate(mask1.cuda().unsqueeze(0).unsqueeze(0).float(), size=resized_image1.shape[:2], mode='nearest').squeeze(0).squeeze(0)
-    mask2 = F.interpolate(mask2.cuda().unsqueeze(0).unsqueeze(0).float(), size=resized_image2.shape[:2], mode='nearest').squeeze(0).squeeze(0)
-
-    # Mask the images
-    resized_image1 = resized_image1 * mask1.unsqueeze(-1).repeat(1, 1, 3)
-    resized_image2 = resized_image2 * mask2.unsqueeze(-1).repeat(1, 1, 3)
-    # Normalize the images to the range [0, 1]
-    resized_image1 = (resized_image1 - resized_image1.min()) / (resized_image1.max() - resized_image1.min())
-    resized_image2 = (resized_image2 - resized_image2.min()) / (resized_image2.max() - resized_image2.min())
-
-    distances = torch.cdist(features1_2d, features2_2d)
-    nearest_patch_indices = torch.argmin(distances, dim=1)
-    nearest_patches = torch.index_select(resized_image2.cuda().clone().detach().reshape(-1, 3), 0, nearest_patch_indices)
-
-    nearest_patches_image = nearest_patches.reshape(resized_image1.shape)
-
-    if draw_gif:
-        assert save_path is not None, "save_path must be provided when draw_gif is True"
-        img_1 = resize(image1, features1.shape[2], resize=True, to_pil=True)
-        img_2 = resize(image2, features2.shape[2], resize=True, to_pil=True)
-        mapping = torch.zeros((img_1.size[1], img_1.size[0], 2))
-        for i in range(len(nearest_patch_indices)):
-            mapping[i // img_1.size[0], i % img_1.size[0]] = torch.tensor([nearest_patch_indices[i] // img_2.size[0], nearest_patch_indices[i] % img_2.size[0]])
-        animate_image_transfer(img_1, img_2, mapping, save_path) if gif_reverse else animate_image_transfer_reverse(img_1, img_2, mapping, save_path)
-
-    # TODO: upsample the nearest_patches_image to the resolution of the original image
-    # nearest_patches_image = F.interpolate(nearest_patches_image.permute(2,0,1).unsqueeze(0), size=256, mode='bilinear').squeeze(0).permute(1,2,0)
-    # resized_image2 = F.interpolate(resized_image2.permute(2,0,1).unsqueeze(0), size=256, mode='bilinear').squeeze(0).permute(1,2,0)
-
-    nearest_patches_image = (nearest_patches_image).cpu().numpy()
-    resized_image2 = (resized_image2).cpu().numpy()
-
-    return nearest_patches_image, resized_image2, nearest_patches
-
+##----- This func is taken from the "Tale of 2 Features" paper (https://github.com/Junyi42/sd-dino/blob/master/utils/utils_correspondence.py)
 def chunk_cosine_sim(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     """ Computes cosine similarity between all possible pairs in two sets of vectors.
     Operates on chunks so no large amount of GPU RAM is required.
@@ -235,6 +221,9 @@ def chunk_cosine_sim(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         token = x[:, :, token_idx, :].unsqueeze(dim=2)  # Bx1x1xd'
         result_list.append(torch.nn.CosineSimilarity(dim=3)(token, y))  # Bx1xt
     return torch.stack(result_list, dim=2)  # Bx1x(t_x)x(t_y)
+
+
+###----- This func is taken from the "Tale of 2 Features" paper (https://github.com/Junyi42/sd-dino/blob/master/utils/utils_correspondence.py)
 
 # The function takes two input tensors x and y, which are expected to be 3-dimensional tensors. 
 # The parameter p specifies the power for the Minkowski distance (defaults to 2, which is the Euclidean distance), 
@@ -273,157 +262,8 @@ def pairwise_sim(x: torch.Tensor, y: torch.Tensor, p=2, normalize=False) -> torc
     represents the similarity between the i-th token in x and all tokens in y. The output tensor has shape [batch_size, sequence_length, num_token_x]."""
     return torch.stack(result_list, dim=2)
 
-def draw_correspondences_1_image(points1: List[Tuple[float, float]], image1: Image.Image, index) -> plt.Figure:
 
-    num_points = len(points1)
-
-    if num_points > 15:
-        # cmap = plt.get_cmap('tab10')
-        cmap = plt.get_cmap('viridis')
-    else:
-        cmap = ListedColormap(["red", "yellow", "blue", "lime", "magenta", "indigo", "orange", "cyan", "darkgreen",
-                            "maroon", "white", "black", "chocolate", "gray", "blueviolet"])
-    colors = np.array([cmap(x) for x in range(num_points)])
-    colors = cmap(np.linspace(0, 1, num_points))
-    radius1, radius2 = 0.03*max(image1.size), 0.01*max(image1.size)
-    
-    # plot a subfigure put image1 in the top, image2 in the bottom
-    fig, ax1 = plt.subplots(1, 1, figsize=(10, 5))
-    ax1.axis('off')
-
-    for idx, (point1, color) in enumerate(zip(points1, colors)):
-        #y1, x1 = point1
-        x1, y1  = point1
-        circ1_1 = plt.Circle((x1, y1), radius1, facecolor=color, edgecolor='white', alpha=0.5)
-        circ1_2 = plt.Circle((x1, y1), radius2, facecolor=color, edgecolor='white')
-        #ax1.add_patch(circ1_1)
-        ax1.add_patch(circ1_2)
-        
-        # Adding an integer number next to the point
-        ax1.text(x1 + radius2, y1, str(idx), color='blue', fontsize=10, verticalalignment='center', horizontalalignment='left')
-    
-    # ax1.text(0.7, 0.95, f' Frame_{index}', verticalalignment='top', horizontalalignment='center', color = 'black', fontsize ='13', fontweight = 'bold', transform=ax1.transAxes)
-    ax1.imshow(image1)
-    plt.tight_layout()
-    
-    return fig
-
-
-def draw_correspondences_gathered(points1: List[Tuple[float, float]], points2: List[Tuple[float, float]],
-                        image1: Image.Image, image2: Image.Image) -> plt.Figure:
-    """
-    draw point correspondences on images.
-    :param points1: a list of (y, x) coordinates of image1, corresponding to points2.
-    :param points2: a list of (y, x) coordinates of image2, corresponding to points1.
-    :param image1: a PIL image.
-    :param image2: a PIL image.
-    :return: a figure of images with marked points.
-    """
-    
-    assert len(points1) == len(points2), f"points lengths are incompatible: {len(points1)} != {len(points2)}."
-    
-    num_points = len(points1)
-
-    if num_points > 15:
-        cmap = plt.get_cmap('tab10')
-    else:
-        cmap = ListedColormap(["red", "yellow", "blue", "lime", "magenta", "indigo", "orange", "cyan", "darkgreen",
-                            "maroon", "black", "white", "chocolate", "gray", "blueviolet"])
-    colors = np.array([cmap(x) for x in range(num_points)])
-    radius1, radius2 = 0.03*max(image1.size), 0.01*max(image1.size)
-    
-    # plot a subfigure put image1 in the top, image2 in the bottom
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
-    ax1.axis('off')
-    ax2.axis('off')
-    
-    for point1, point2, color in zip(points1, points2, colors):
-        y1, x1 = point1
-        circ1_1 = plt.Circle((x1, y1), radius1, facecolor=color, edgecolor='white', alpha=0.5)
-        circ1_2 = plt.Circle((x1, y1), radius2, facecolor=color, edgecolor='white')
-        ax1.add_patch(circ1_1)
-        ax1.add_patch(circ1_2)
-        y2, x2 = point2
-        circ2_1 = plt.Circle((x2, y2), radius1, facecolor=color, edgecolor='white', alpha=0.5)
-        circ2_2 = plt.Circle((x2, y2), radius2, facecolor=color, edgecolor='white')
-        ax2.add_patch(circ2_1)
-        ax2.add_patch(circ2_2)
-    
-    ax1.imshow(image1)
-    ax2.imshow(image2)
-    plt.tight_layout()
-    
-    return fig
-
-def draw_correspondences_lines(points1: List[Tuple[float, float]], points2: List[Tuple[float, float]], 
-                               gt_points2: List[Tuple[float, float]], image1: Image.Image, 
-                               image2: Image.Image, threshold=None) -> plt.Figure:
-    """
-    draw point correspondences on images.
-    :param points1: a list of (y, x) coordinates of image1, corresponding to points2.
-    :param points2: a list of (y, x) coordinates of image2, corresponding to points1.
-    :param gt_points2: a list of ground truth (y, x) coordinates of image2.
-    :param image1: a PIL image.
-    :param image2: a PIL image.
-    :param threshold: distance threshold to determine correct matches.
-    :return: a figure of images with marked points and lines between them showing correspondence.
-    """
-
-    points2=points2.cpu().numpy()
-    gt_points2=gt_points2.cpu().numpy()
-
-    def compute_correct():
-        alpha = torch.tensor([0.1, 0.05, 0.01])
-        correct = torch.zeros(len(alpha))
-        err = (torch.tensor(points2) - torch.tensor(gt_points2)).norm(dim=-1)
-        err = err.unsqueeze(0).repeat(len(alpha), 1)
-        correct = err < threshold.unsqueeze(-1) if len(threshold.shape)==1 else err < threshold
-        return correct
-
-    correct = compute_correct()[0]
-    # print(correct.shape, len(points1)) 
-
-    assert len(points1) == len(points2), f"points lengths are incompatible: {len(points1)} != {len(points2)}."
-    num_points = len(points1)
-
-    if num_points > 15:
-        cmap = plt.get_cmap('tab10')
-    else:
-        cmap = ListedColormap(["red", "yellow", "blue", "lime", "magenta", "indigo", "orange", "cyan", "darkgreen",
-                            "maroon", "black", "white", "chocolate", "gray", "blueviolet"])
-    colors = np.array([cmap(x) for x in range(num_points)])
-    radius1, radius2 = 0.03*max(image1.size), 0.01*max(image1.size)
-    
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
-    ax1.axis('off')
-    ax2.axis('off')
-    ax1.imshow(image1)
-    ax2.imshow(image2)
-    ax1.set_xlim(0, image1.size[0])
-    ax1.set_ylim(image1.size[1], 0)
-    ax2.set_xlim(0, image2.size[0])
-    ax2.set_ylim(image2.size[1], 0)
-
-    for i, (point1, point2) in enumerate(zip(points1, points2)):
-        y1, x1 = point1
-        circ1_1 = plt.Circle((x1, y1), radius1, facecolor=colors[i], edgecolor='white', alpha=0.5)
-        circ1_2 = plt.Circle((x1, y1), radius2, facecolor=colors[i], edgecolor='white')
-        ax1.add_patch(circ1_1)
-        ax1.add_patch(circ1_2)
-        y2, x2 = point2
-        circ2_1 = plt.Circle((x2, y2), radius1, facecolor=colors[i], edgecolor='white', alpha=0.5)
-        circ2_2 = plt.Circle((x2, y2), radius2, facecolor=colors[i], edgecolor='white')
-        ax2.add_patch(circ2_1)
-        ax2.add_patch(circ2_2)
-
-        # Draw lines
-        color = 'blue' if correct[i].item() else 'red'
-        con = ConnectionPatch(xyA=(x2, y2), xyB=(x1, y1), coordsA="data", coordsB="data",
-                              axesA=ax2, axesB=ax1, color=color, linewidth=1.5)
-        ax2.add_artist(con)
-
-    return fig
-
+##----- This func is taken from the "Tale of 2 Features" paper (https://github.com/Junyi42/sd-dino/blob/master/utils/utils_correspondence.py)
 def co_pca(features1, features2, dim=[128,128,128]):
     
     processed_features1 = {}
@@ -505,194 +345,3 @@ def co_pca(features1, features2, dim=[128,128,128]):
     features2_gether_s4_s5 = torch.cat([processed_features2['s4'], F.interpolate(processed_features2['s5'], size=(processed_features2['s4'].shape[-2:]), mode='bilinear')], dim=1)
 
     return features1_gether_s4_s5, features2_gether_s4_s5
-
-def animate_image_transfer(image1, image2, mapping, output_path):
-    import numpy as np
-    from PIL import Image
-    import matplotlib.pyplot as plt
-    import matplotlib.animation as animation
-
-    # # Load your two images
-    # image1 = Image.open(image1_path)
-    # image2 = Image.open(image2_path)
-
-    # Ensure the two images are the same size
-    assert image1.size == image2.size, "Images must be the same size."
-    rec_size = 2
-    # Convert the images into numpy arrays
-    image1_array = np.array(image1)
-    image2_array = np.array(image2)
-
-    # Retrieve the width and height of the images
-    height, width, _ = image1_array.shape
-
-    # Assume we have a mapping list
-    mapping = mapping.cpu().numpy()
-
-    # We add a column of white pixels between the two images
-    gap = width // 10
-
-    # Create a canvas with a width that is the sum of the widths of the two images and the gap. 
-    # The height is the same as the height of the images.
-    fig, ax = plt.subplots(figsize=((2 * width + gap) / 200, height / 200), dpi=300)
-
-    # Remove the axes
-    ax.axis('off')
-
-    # Create an image object, initializing it as entirely white
-    combined_image = np.ones((height, 2 * width + gap, 3), dtype=np.uint8) * 255
-
-    # Place image1 on the left, image2 on the right, with a gap in the middle
-    combined_image[:, :width] = image1_array
-    combined_image[:, width + gap:] = image2_array
-
-    img_obj = ax.imshow(combined_image)
-
-    # For each frame of the computation and animation, we need to know the start and target positions of each pixel
-    starts = np.mgrid[:height, :width].reshape(2, -1).T
-    targets = np.array([mapping[i, j] for i in range(height) for j in range(width)]) + [0, width + gap]
-
-    # To better display the animation, we divide the pixel movement into several frames
-    num_frames = 30
-
-    def calculate_path(start, target, num_frames):
-        """Calculate the path of a pixel from start to target over num_frames."""
-        # Generate linear values from 0 to 1
-        t = np.linspace(0, 1, num_frames)
-
-        # Apply the quadratic easing out function (starts fast, then slows down)
-        t = 1 - (1 - t) ** 2
-
-        # Calculate the path
-        path = start + t[:, np.newaxis] * (target - start)
-
-        return path
-
-    def update(frame):
-        # At the start of each frame, we initialize the canvas with image1 on the left, image2 on the right, and white in the middle
-        combined_image.fill(255)
-        combined_image[:, :width] = image1_array
-        combined_image[:, width + gap:] = image2_array
-        # In each frame, we move a small portion of pixels from the left image to the right image
-        # This gives a better view of how the pixels move
-        if frame >= num_frames - 1:
-            frame = num_frames - 1
-        for i in range(height):
-            for j in range(width):
-                # Calculate the current pixel's position
-                start = starts[i * width + j]
-                target = targets[i * width + j]
-                # If the mapped target position is greater than 0, move the pixel, otherwise keep it the same
-                if target[0] > 0 and target[1] > 0:
-                    position = calculate_path(start, target, num_frames)[frame]
-                    # Copy the current pixel's color to the new position
-                    combined_image[int(position[0])-rec_size//2:int(position[0])-rec_size//2+rec_size, int(position[1])-rec_size//2:int(position[1])-rec_size//2+rec_size] = image1_array[i, j]
-        img_obj.set_array(combined_image)  # Update the displayed image
-        return img_obj,
-
-    # Create the animation
-    ani = animation.FuncAnimation(fig, update, frames=num_frames + 30, blit=True)
-    if not os.path.exists(os.path.dirname(output_path)):
-        os.makedirs(os.path.dirname(output_path))
-    # Save the animation
-    ani.save(output_path, writer='pillow', fps=30)
-    # save mapping
-    np.save(output_path[:-4]+'.npy', mapping)
-
-
-def animate_image_transfer_reverse(image1, image2, mapping, output_path):
-    import numpy as np
-    from PIL import Image
-    import matplotlib.pyplot as plt
-    import matplotlib.animation as animation
-
-    # # Load your two images
-    # image1 = Image.open(image1_path)
-    # image2 = Image.open(image2_path)
-
-    # Ensure the two images are the same size
-    assert image1.size == image2.size, "Images must be the same size."
-    # rec_size = 2
-    # Convert the images into numpy arrays
-    image1_array = np.array(image1)
-    image2_array = np.array(image2)
-
-    # Retrieve the width and height of the images
-    height, width, _ = image1_array.shape
-
-    # Assume we have a mapping list
-    mapping = mapping.cpu().numpy()
-
-    # We add a column of white pixels between the two images
-    gap = width // 10
-
-    # Create a canvas with a width that is the sum of the widths of the two images and the gap. 
-    # The height is the same as the height of the images.
-    fig, ax = plt.subplots(figsize=((2 * width + gap) / 200, height / 200), dpi=300)
-
-    # Remove the axes
-    ax.axis('off')
-
-    # Create an image object, initializing it as entirely white
-    combined_image = np.ones((height, 2 * width + gap, 3), dtype=np.uint8) * 255
-
-    # Place image1 on the left, image2 on the right, with a gap in the middle
-    combined_image[:, :width] = image2_array
-    combined_image[:, width + gap:] = image1_array
-
-    img_obj = ax.imshow(combined_image)
-
-    # For each frame of the computation and animation, we need to know the start and target positions of each pixel
-    starts = np.mgrid[:height, :width].reshape(2, -1).T + [0, width + gap]
-    targets = np.array([mapping[i, j] for i in range(height) for j in range(width)])
-
-    # To better display the animation, we divide the pixel movement into several frames
-    num_frames = 30
-
-    def calculate_path(start, target, num_frames):
-        """Calculate the path of a pixel from start to target over num_frames."""
-        # Generate linear values from 0 to 1
-        t = np.linspace(1, 0, num_frames)
-
-        # Apply the quadratic easing out function (starts fast, then slows down)
-        t = 1 - (1 - t) ** 2
-
-        # Calculate the path
-        path = start + t[:, np.newaxis] * (target - start)
-
-        return path
-
-    def update(frame):
-        # At the start of each frame, we initialize the canvas with image1 on the left, image2 on the right, and white in the middle
-        combined_image.fill(255)
-        combined_image[:, :width] = image2_array
-        combined_image[:, width + gap:] = image1_array
-        # In each frame, we move a small portion of pixels from the left image to the right image
-        # This gives a better view of how the pixels move
-        if frame >= num_frames - 1:
-            frame = num_frames - 1
-        if frame >= num_frames // 6 * 5:
-            rec_size = 1
-        else:
-            rec_size = 2
-        for i in range(height):
-            for j in range(width):
-                # Calculate the current pixel's position
-                start = starts[i * width + j]
-                target = targets[i * width + j]
-                # If the mapped target position is greater than 0, move the pixel, otherwise keep it the same
-                if target[0] > 0 and target[1] > 0:
-                    position = calculate_path(start, target, num_frames)[frame]
-                    # Copy the current pixel's color to the new position
-                    combined_image[int(position[0])-rec_size//2:int(position[0])-rec_size//2+rec_size, int(position[1])-rec_size//2:int(position[1])-rec_size//2+rec_size] = image2_array[int(mapping[i, j][0]), int(mapping[i, j][1])]
-        img_obj.set_array(combined_image)  # Update the displayed image
-        return img_obj,
-
-    # Create the animation
-    ani = animation.FuncAnimation(fig, update, frames=num_frames + 30, blit=True)
-    if not os.path.exists(os.path.dirname(output_path)):
-        os.makedirs(os.path.dirname(output_path))
-    # Save the animation
-    ani.save(output_path, writer='pillow', fps=30)
-    # save the maping
-    np.save(output_path[:-4]+'.npy', mapping)

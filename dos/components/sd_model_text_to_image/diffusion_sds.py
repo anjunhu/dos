@@ -24,7 +24,7 @@ device=torch.device('cuda:0')
 optimizer_class=torch.optim.SGD
 torch_dtype=torch.float16
 
-class Stable_Diffusion_Text_to_Target_Img:
+class StableDiffusionForTargetImg:
     
     def __init__(
         self,
@@ -74,8 +74,6 @@ class Stable_Diffusion_Text_to_Target_Img:
         # Uses pre-trained CLIP Embeddings
         # Prompts -> text embeds
         # SHAPE OF text_embeddings [2, 77, 768]
-        print('self.prompts', self.prompts)
-        print('self.negative_prompts', self.negative_prompts)
         text_embeddings = self.sd.get_text_embeds(self.prompts, self.negative_prompts) 
 
         # init img
