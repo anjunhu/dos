@@ -3,7 +3,6 @@ random.seed(42)
 import os
 # # Set TORCH_HOME to a custom directory
 # os.environ['TORCH_HOME'] = '/work/oishideb/cache/torch_hub'
-
 import time
 import timeit
 import torch
@@ -103,10 +102,10 @@ class Articulator(BaseModel):
         self, articulated_mesh, pose, renderer, bones, rendered_mask, rendered_image, target_image
     ):
         # 1. Sample keypoints from the rendered image
-        #  - sample keypoints along the bone lines
-        #  - find the closest visible point on the articulated_mesh in 3D (the visibility is done in 2D)
-        #  - select the keypoints from the eroded mask
-        # 2. Find corresponding target keypoints (TODO: some additional tricks e.g. optimal transport etc.)
+        #    - find the closest visible point on the articulated_mesh in 3D (the visibility is done in 2D)
+        #    - select the keypoints from the eroded mask
+        #    - sample keypoints along the bone lines
+        # 2. Find corresponding target keypoints using Fuse method. (TODO: some additional tricks e.g. optimal transport etc.)
         # 3. Compute cycle consistency check
         
         start_time = time.time()
@@ -137,6 +136,7 @@ class Articulator(BaseModel):
         
         eroded_mask = self.mask_erode_tensor(rendered_mask)
             
+        # SELECT KEYPOINT SAMPLING OPTION
         if self.mode_kps_selection == "kps_fr_sample_on_bone_line":
             kps_img_resolu = self.kps_fr_sample_on_bone_line(bones, mvp, articulated_mesh, visible_vertices, self.num_sample_bone_line, eroded_mask)
         elif self.mode_kps_selection == "kps_fr_sample_farthest_points":
@@ -250,7 +250,7 @@ class Articulator(BaseModel):
             kps_img_resolu_list.append(kps_img_resolu)
             
         
-        #---- Following cycle consistency check some of the points got removed, in order to make the lenght same, it has been padded with zeros.
+        #---- Following cycle consistency check some of the points got removed, in order to make the length same, it has been padded with zeros.
         
         # Find the maximum length
         max_length = max(len(item) for item in kps_img_resolu_list if hasattr(item, '__len__'))
@@ -390,8 +390,8 @@ class Articulator(BaseModel):
             # For Debugging purpose, save all the poses before optimisation
             self.save_all_poses_before_optimisation(pose, renderer_outputs, self.path_to_save_images)
             
-            # GENERATING TARGET IMAGES USING STABLE DIFFUSION
-            target_img_rgb, target_img_decoded = self.sd_Text_to_Target_Img.run_experiment(
+            # GENERATING TARGET IMAGES USING DIFFUSION (SD or DF)
+            target_img_rgb = self.sd_Text_to_Target_Img.run_experiment(
             input_image = renderer_outputs["image_pred"][i],
             image_fr_path = False
             )

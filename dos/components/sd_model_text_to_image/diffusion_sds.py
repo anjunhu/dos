@@ -19,6 +19,9 @@ sys.path.append('../../dos')
 from dos.components.sd_model_text_to_image.sd import StableDiffusion
 from dos.components.sd_model_text_to_image.sd import seed_everything
 
+from dos.components.sd_model_text_to_image.deep_floyd import DeepFloyd
+
+
 schedule = np.array([600] * 50).astype('int32')
 device=torch.device('cuda:0')
 optimizer_class=torch.optim.SGD
@@ -44,7 +47,8 @@ class StableDiffusionForTargetImg:
         optimizer_class=optimizer_class,
         torch_dtype=torch_dtype,
         # input_image=None,
-        image_fr_path = False
+        image_fr_path = False,
+        select_deep_floyd = True
     ):
         
         self.cache_dir = cache_dir
@@ -63,18 +67,23 @@ class StableDiffusionForTargetImg:
         self.schedule = schedule
         self.torch_dtype = torch_dtype
         self.sd = StableDiffusion(device, cache_dir, torch_dtype=torch_dtype)
+        self.df = DeepFloyd(device, cache_dir, torch_dtype=torch_dtype)
         # self.input_image = input_image
         self.image_fr_path = image_fr_path
+        self.select_deep_floyd = select_deep_floyd
         
         seed_everything(self.seed)
 
         
     def run_experiment(self, input_image, image_fr_path):
         
-        # Uses pre-trained CLIP Embeddings
-        # Prompts -> text embeds
-        # SHAPE OF text_embeddings [2, 77, 768]
-        text_embeddings = self.sd.get_text_embeds(self.prompts, self.negative_prompts) 
+        if self.select_deep_floyd:
+            text_embeddings = self.df.get_text_embeds(self.prompts, self.negative_prompts)
+        else:
+            # Uses pre-trained CLIP Embeddings
+            # Prompts -> text embeds
+            # SHAPE OF text_embeddings [2, 77, 768]
+            text_embeddings = self.sd.get_text_embeds(self.prompts, self.negative_prompts) 
 
         # init img
         height, width = 256, 256
@@ -157,9 +166,16 @@ class StableDiffusionForTargetImg:
                 # 'train_step_fn' - training steps are set differently based on the mode.
                 # partial function creates a new func by passing the function and the arguments we want to pre-fill to partial.
                 # train_step_fn is a new function
-                train_step_fn = partial(self.sd.train_step, pred_rgb=pred_rgb)
+                if self.select_deep_floyd:
+                    train_step_fn = partial(self.df.train_step, pred_rgb=pred_rgb)
+                else:
+                    train_step_fn = partial(self.sd.train_step, pred_rgb=pred_rgb)
+                    
             elif self.mode in ["sds_latent", "sds_latent-l2_image"]:
-                train_step_fn = partial(self.sd.train_step, latents=latents)
+                if self.select_deep_floyd:
+                    train_step_fn = partial(self.df.train_step, latents=latents)
+                else:
+                    train_step_fn = partial(self.sd.train_step, latents=latents)
             else:
                 raise ValueError(f"Unknown mode: {self.mode}")
 
@@ -168,15 +184,18 @@ class StableDiffusionForTargetImg:
             latents.retain_grad()
             loss.backward()
 
-            # Decoding the Latent to image space
-            rgb_decoded = self.sd.decode_latents(latents)
-
             # print min and max of latents, latents grad, and rgb_decoded and pred_rgb
             print(f"latents: min={latents.min().item():.4f}, max={latents.max().item():.4f}")
             print(f"latents.grad: min={latents.grad.min().item():.4f}, max={latents.grad.max().item():.4f}")
-            print(f"rgb_decoded: min={rgb_decoded.min().item():.4f}, max={rgb_decoded.max().item():.4f}")
             print(f"pred_rgb: min={pred_rgb.min().item():.4f}, max={pred_rgb.max().item():.4f}")
             
+            
+            # Decoding the Latent to image space
+            if self.select_deep_floyd == False:
+                rgb_decoded = self.sd.decode_latents(latents)
+                print(f"rgb_decoded: min={rgb_decoded.min().item():.4f}, max={rgb_decoded.max().item():.4f}")
+            
+        
             optimizer.step()
             latents.grad = None
 
@@ -195,22 +214,28 @@ class StableDiffusionForTargetImg:
 
             if i % 2 == 0:
                 all_imgs.append(pred_rgb.clone().detach())
-                all_decoded_imgs.append(rgb_decoded.clone().detach())
+                
+                if self.select_deep_floyd == False:
+                    all_decoded_imgs.append(rgb_decoded.clone().detach())
 
         # %%
         # save all images
         n_images = len(all_imgs)
         all_imgs = rearrange(torch.stack(all_imgs), 't b c h w -> (b t) c h w')
         all_imgs = torchvision.utils.make_grid(all_imgs, nrow=n_images, pad_value=1)
-        all_decoded_imgs = rearrange(torch.stack(all_decoded_imgs), 't b c h w -> (b t) c h w')
-        all_decoded_imgs = torchvision.utils.make_grid(all_decoded_imgs, nrow=n_images, pad_value=1)
-        # add below
-        # resize all_imgs to be the same size as all_decoded_imgs
-        all_imgs = torch.nn.functional.interpolate(all_imgs[None], size=all_decoded_imgs.shape[-2:])[0]
-        if self.mode == "sds_latent":
-            all_imgs = all_decoded_imgs
-        else:
-            all_imgs = torch.cat([all_imgs, all_decoded_imgs], dim=1)
+        
+        if self.select_deep_floyd == False:
+            all_decoded_imgs = rearrange(torch.stack(all_decoded_imgs), 't b c h w -> (b t) c h w')
+            all_decoded_imgs = torchvision.utils.make_grid(all_decoded_imgs, nrow=n_images, pad_value=1)
+
+            # add below
+            # resize all_imgs to be the same size as all_decoded_imgs
+            all_imgs = torch.nn.functional.interpolate(all_imgs[None], size=all_decoded_imgs.shape[-2:])[0]
+
+            if self.mode == "sds_latent":
+                all_imgs = all_decoded_imgs
+            else:
+                all_imgs = torch.cat([all_imgs, all_decoded_imgs], dim=1)
 
         all_imgs = all_imgs.detach().cpu().permute(1, 2, 0).numpy()
         # clip to [0, 1]
@@ -225,11 +250,14 @@ class StableDiffusionForTargetImg:
         pred_rgb_PIL = torchvision_F.to_pil_image(pred_rgb[0])
         pred_rgb_PIL.save(f'{self.output_dir}/pred_rgb.jpg')
         
-        # rgb_decoded size is 512x512
-        rgb_decoded_PIL = torchvision_F.to_pil_image(rgb_decoded[0])
-        rgb_decoded_PIL.save(f'{self.output_dir}/rgb_decoded.jpg')
+        if self.select_deep_floyd == False:
+            # rgb_decoded size is 512x512
+            rgb_decoded_PIL = torchvision_F.to_pil_image(rgb_decoded[0])
+            rgb_decoded_PIL.save(f'{self.output_dir}/rgb_decoded.jpg')
         
-        return pred_rgb, rgb_decoded
+            return pred_rgb,  rgb_decoded
+        
+        return pred_rgb
         
 
 if __name__ == '__main__':

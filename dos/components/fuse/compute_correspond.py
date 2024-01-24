@@ -1,5 +1,5 @@
-##------- CODE taken from the "Tale of 2 Features" paper (https://github.com/Junyi42/sd-dino/blob/master/pck_spair_pascal.py), 
-##------- some modification has been added to adapt to our project.----------------------------------------------------------
+##------- CODE mainly taken from the "Tale of 2 Features" paper (https://github.com/Junyi42/sd-dino/blob/master/pck_spair_pascal.py), 
+##------- but further modifications have been made to adapt to our project.----------------------------------------------------------
 
 import sys
 import os
@@ -23,8 +23,7 @@ FUSE_DINO = False if NOT_FUSE else True
 DINOV2 = False if DINOV1 else True
 CO_PCA_DINO = 0
 CO_PCA = True
-
-MODEL_SIZE = 'base' 
+MODEL_SIZE = 'base'
 TEXT_INPUT = False
 EDGE_PAD = False
 # set true to use the raw features from sd
@@ -35,12 +34,7 @@ PCA_DIMS =[256, 256, 256]
 WEIGHT =[1,1,1,1,1]
 MASK = False
 
-VER = f'v1-5';  # version of diffusion, v1-3, v1-4, v1-5, v2-1-base
-SIZE=960; # image size for the sd input # ORIGINAL CODE
-TIMESTEP = 100; # timestep for diffusion, [0, 1000], 0 for no noise added
-INDICES=[2,5,8,11] # select different layers of sd features, only the first three are used by default
-
-
+# SIZE=960; # image size for the sd input # ORIGINAL CODE
 model_dict={'small':'dinov2_vits14',
                 'base':'dinov2_vitb14',
                 'large':'dinov2_vitl14',
@@ -58,9 +52,6 @@ end_time = time.time()
 #     file.write(f"The ViTExtractor function took {end_time - start_time} seconds to run.\n")
 print(f'The ViTExtractor function took {end_time - start_time} seconds to run.')
       
-
-# # Ensure to set the model to evaluation mode if you're doing inference
-# sd_model.eval()
 
 def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, files=None, category='horse', mask=False, dist='l2', thresholds=None, real_size=960):  # kps,
     # print('compute_correspondences func is running...')
@@ -80,7 +71,6 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
         layer = 39
     facet = 'token' if DINOV2 else 'key'
     # stride = 14 if DINOV2 else 4 if ONLY_DINO else 8
-    # device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # indiactor = 'v2' if DINOV2 else 'v1'
     # model_size = model_type.split('vit')[-1]
       
@@ -89,17 +79,9 @@ def compute_correspondences_sd_dino(img1, img1_kps, img2, index, model, aug, fil
     
     input_text = "a photo of "+category if TEXT_INPUT else None
 
-    current_save_results = 0
-    gt_correspondences = []
-    pred_correspondences = []
     if thresholds is not None:
         thresholds = torch.tensor(thresholds).to(device)
-        bbox_size=[]
-        
 
-    fig_list = []
-    output_dict={}
-    
     # Load image 1
     img1_input = resize(img1, real_size, resize=True, to_pil=True, edge=EDGE_PAD) # this is for sd - img size used is 960*960
     img1 = resize(img1, img_size, resize=True, to_pil=True, edge=EDGE_PAD)        # this is for DINO - img size used is 840*840

@@ -48,14 +48,15 @@ model:
     output_dir: "sd_sds_output"
     init_image_path: /users/oishideb/laam/dos/examples/data/cow.png
     vis_name: cow-sds_latent-l2_image-600-lr1e-1.jpg
-    prompts: 'a running cow'          # the string shouldn't be in a square brackets ['']
+    prompts: 'A DSLR photo of side-facing full-size brown cow with one front leg up in the air.'     # the string shouldn't be in a square brackets ['']
     negative_prompts: 'cartoon, dead, shadow'     # the string shouldn't be in a square brackets ['']
-    mode: sds_latent-l2_image
+    mode: sds_image   # sds_latent-l2_image #  # 
     lr: 0.1
     lr_l2: 1e4
     seed: 2
     num_inference_steps: 50
     guidance_scale: 80
+    select_deep_floyd: True
 
 renderer:   # variable Name
   _target_: dos.modules.renderer.Renderer # Class Name
@@ -78,8 +79,8 @@ device: cuda:0
 learning_rate: 0.1  # tried with 0.01, 0.5, 0.9, 1;   # 1e-4
 
 # for debugging
-num_iterations: 6
-num_vis_iterations: 6
+num_iterations: 50
+num_vis_iterations: 10
 num_eval_iterations: 10
 save_checkpoint_freq: 50
 num_workers: 0

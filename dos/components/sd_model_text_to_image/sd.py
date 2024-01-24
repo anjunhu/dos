@@ -44,7 +44,6 @@ class StableDiffusion(nn.Module):
         self.sd_version = sd_version
         self.torch_dtype = torch_dtype
 
-
         if hf_key is not None:
             print(f'[INFO] using hugging face custom model key: {hf_key}')
             model_key = hf_key
@@ -81,6 +80,7 @@ class StableDiffusion(nn.Module):
         text_input = self.tokenizer(prompt, padding='max_length', max_length=self.tokenizer.model_max_length, truncation=True, return_tensors='pt')
 
         with torch.no_grad():
+            # Shape of "text_input.input_ids" is [1, 77]
             text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
 
         # Do the same for unconditional embeddings
@@ -99,6 +99,7 @@ class StableDiffusion(nn.Module):
             max_step_pct=0.98, return_aux=False, fixed_step=None, noise_random_seed=None):
         text_embeddings = text_embeddings.to(self.torch_dtype)
 
+        #
         if latents is None:
             pred_rgb = pred_rgb.to(self.torch_dtype)
             b = pred_rgb.shape[0]
@@ -112,13 +113,16 @@ class StableDiffusion(nn.Module):
             # torch.cuda.synchronize(); print(f'[TIME] guiding: vae enc {time.time() - _t:.4f}s')
         else:
             b = latents.shape[0]
+        
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
         if fixed_step is None:
+            print('fixed_step is None')
             min_step = int(self.num_train_timesteps * min_step_pct)
             max_step = int(self.num_train_timesteps * max_step_pct)
             t = torch.randint(min_step, max_step + 1, [b], dtype=torch.long, device=self.device)
         else:
+            print('fixed_step is not None')
             t = torch.zeros([b], dtype=torch.long, device=self.device) + fixed_step
 
 
@@ -129,14 +133,25 @@ class StableDiffusion(nn.Module):
             if noise_random_seed is not None:
                 torch.manual_seed(noise_random_seed)
                 torch.cuda.manual_seed(noise_random_seed)
+            
+            # noise shape [1, 4, 64, 64]
             noise = torch.randn_like(latents)
+            
+            # latents_noisy shape [1, 4, 64, 64]
             latents_noisy = self.scheduler.add_noise(latents, noise, t)
             # pred noise
             latent_model_input = torch.cat([latents_noisy] * 2)
+            
             t_input = torch.cat([t, t])
+            
+            # text_embeddings shape [2, 77, 768]
+            # t_input shape [2]
+            # latent_model_input shape [2, 4, 64, 64]
+            # noise_pred shape [2, 4, 64, 64]
             noise_pred = self.unet(latent_model_input, t_input, encoder_hidden_states=text_embeddings).sample
+        
         # torch.cuda.synchronize(); print(f'[TIME] guiding: unet {time.time() - _t:.4f}s')
-
+            
         # perform guidance (high scale from paper!)
         # THIS DOES THE CLASSIFIER-FREE GUIDANCE
         # THE OUTPUT IS SPLITTED IN TWO PARTS, ONE FOR CONDITIONED-ON-TEXT AND ANOTHER ONE FOR UNCONDITIONED-ON-TEXT outputs.        
@@ -203,10 +218,11 @@ class StableDiffusion(nn.Module):
     def decode_latents(self, latents):
 
         latents = 1 / 0.18215 * latents
-
+        print('shape of latents', latents)
         with torch.no_grad():
             imgs = self.vae.decode(latents).sample
-
+            print('shape of imgs', imgs)
+            
         imgs = (imgs / 2 + 0.5).clamp(0, 1)
         
         return imgs
