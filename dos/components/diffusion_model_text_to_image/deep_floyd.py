@@ -38,13 +38,6 @@ def seed_everything(seed):
     torch.cuda.manual_seed(seed)
     #torch.backends.cudnn.deterministic = True
     #torch.backends.cudnn.benchmark = True
-    
-
-def hash_prompt(model: str, prompt: str) -> str:
-    import hashlib
-
-    identifier = f"{model}-{prompt}"
-    return hashlib.md5(identifier.encode()).hexdigest()
 
 
 class DeepFloyd(nn.Module):
@@ -69,6 +62,7 @@ class DeepFloyd(nn.Module):
             device_map="auto"
         ) 
         
+        print(f"Loading Deep Floyd ...")
         # Create model
         self.pipe = IFPipeline.from_pretrained(
             self.pretrained_model_name_or_path,

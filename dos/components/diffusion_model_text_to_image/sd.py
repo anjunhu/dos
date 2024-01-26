@@ -218,10 +218,8 @@ class StableDiffusion(nn.Module):
     def decode_latents(self, latents):
 
         latents = 1 / 0.18215 * latents
-        print('shape of latents', latents)
         with torch.no_grad():
             imgs = self.vae.decode(latents).sample
-            print('shape of imgs', imgs)
             
         imgs = (imgs / 2 + 0.5).clamp(0, 1)
         

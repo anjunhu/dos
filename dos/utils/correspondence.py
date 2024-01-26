@@ -23,6 +23,22 @@ def padding_tensor(tensor, max_length, device):
     return tensor
 
 #---- This func is written by Oishi
+def tensor_to_matplotlib_figure(tensor):
+    # Convert PyTorch tensor to numpy array
+    # If the tensor is on GPU, move it to CPU and then convert to numpy
+    numpy_image = tensor.detach().cpu().numpy()
+
+    # Convert from CHW to HWC format for matplotlib
+    numpy_image = np.transpose(numpy_image, (1, 2, 0))
+
+    # Create a matplotlib figure
+    fig = plt.figure()
+    plt.imshow(numpy_image)
+    plt.axis('off')  # Turn off axis
+
+    return fig
+
+#---- This func is written by Oishi
 def draw_correspondences_1_image(points1: List[Tuple[float, float]], image1: Image.Image, index) -> plt.Figure:
 
     num_points = len(points1)

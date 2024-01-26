@@ -16,18 +16,16 @@ import torchvision.transforms.functional as torchvision_F
 import sys
 sys.path.append('../../dos')
 
-from dos.components.sd_model_text_to_image.sd import StableDiffusion
-from dos.components.sd_model_text_to_image.sd import seed_everything
-
-from dos.components.sd_model_text_to_image.deep_floyd import DeepFloyd
-
+from dos.components.diffusion_model_text_to_image.sd import StableDiffusion
+from dos.components.diffusion_model_text_to_image.sd import seed_everything
+from dos.components.diffusion_model_text_to_image.deep_floyd import DeepFloyd
 
 schedule = np.array([600] * 50).astype('int32')
 device=torch.device('cuda:0')
 optimizer_class=torch.optim.SGD
 torch_dtype=torch.float16
 
-class StableDiffusionForTargetImg:
+class DiffusionForTargetImg:
     
     def __init__(
         self,
@@ -66,11 +64,14 @@ class StableDiffusionForTargetImg:
         self.guidance_scale = guidance_scale
         self.schedule = schedule
         self.torch_dtype = torch_dtype
-        self.sd = StableDiffusion(device, cache_dir, torch_dtype=torch_dtype)
-        self.df = DeepFloyd(device, cache_dir, torch_dtype=torch_dtype)
+        self.select_deep_floyd = select_deep_floyd
+        
+        if self.select_deep_floyd:
+            self.df = DeepFloyd(device, cache_dir, torch_dtype=torch_dtype)
+        else:
+            self.sd = StableDiffusion(device, cache_dir, torch_dtype=torch_dtype)
         # self.input_image = input_image
         self.image_fr_path = image_fr_path
-        self.select_deep_floyd = select_deep_floyd
         
         seed_everything(self.seed)
 
@@ -114,10 +115,8 @@ class StableDiffusionForTargetImg:
         
         else:    
             # Newly Added
-            print('input_image.shape', input_image.shape)
             img = input_image
             img = img[None].repeat(text_embeddings.shape[0] // 2, 1, 1, 1)
-            print('img.shape', img.shape)
             pred_rgb = img   
          
         pred_rgb = pred_rgb.to(device).detach().clone().requires_grad_(True)
@@ -190,7 +189,7 @@ class StableDiffusionForTargetImg:
             print(f"pred_rgb: min={pred_rgb.min().item():.4f}, max={pred_rgb.max().item():.4f}")
             
             
-            # Decoding the Latent to image space
+            # Decoding the Latent to image space for Stable Diffusion
             if self.select_deep_floyd == False:
                 rgb_decoded = self.sd.decode_latents(latents)
                 print(f"rgb_decoded: min={rgb_decoded.min().item():.4f}, max={rgb_decoded.max().item():.4f}")
@@ -255,7 +254,7 @@ class StableDiffusionForTargetImg:
             rgb_decoded_PIL = torchvision_F.to_pil_image(rgb_decoded[0])
             rgb_decoded_PIL.save(f'{self.output_dir}/rgb_decoded.jpg')
         
-            return pred_rgb,  rgb_decoded
+            # return pred_rgb,  rgb_decoded
         
         return pred_rgb
         

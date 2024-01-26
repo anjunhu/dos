@@ -23,12 +23,10 @@ import torchvision.transforms.functional as F
 import torch.nn.functional as nn_functional
 import matplotlib.pyplot as plt
 from ..utils import utils, multi_view
-from dos.components.fuse.compute_correspond import compute_correspondences_sd_dino
-from dos.utils.correspondence import resize, draw_correspondences_1_image, padding_tensor
-from ..components.sd_model_text_to_image.diffusion_sds import StableDiffusionForTargetImg
+from dos.components.fuse.compute_correspond import ComputeCorrespond #compute_correspondences_sd_dino
+from dos.utils.correspondence import resize, draw_correspondences_1_image, padding_tensor, tensor_to_matplotlib_figure
+from ..components.diffusion_model_text_to_image.diffusion_sds import DiffusionForTargetImg
 from dos.components.fuse.extractor_sd import load_model
-# UNCOMMENT IT LATER
-# from ..components.DeepFlyod_text2image_inference import DeepFloydIF
 
 class Articulator(BaseModel):
     """
@@ -49,7 +47,7 @@ class Articulator(BaseModel):
         articulation_predictor=None,
         renderer=None,
         shape_template_path=None,
-        sd_Text_to_Target_Img=None,
+        diffusion_Text_to_Target_Img=None,
         device = "cuda"
     ):
         super().__init__()
@@ -74,9 +72,11 @@ class Articulator(BaseModel):
         else:
             self.shape_template = None
         
-        self.sd_Text_to_Target_Img = sd_Text_to_Target_Img if sd_Text_to_Target_Img is not None else StableDiffusionForTargetImg()
+        self.diffusion_Text_to_Target_Img = diffusion_Text_to_Target_Img if diffusion_Text_to_Target_Img is not None else DiffusionForTargetImg()
         
         self.device = device
+        
+        self.correspond = ComputeCorrespond()
         
         # LOADING ODISE MODEL
         start_time = time.time()
@@ -144,9 +144,13 @@ class Articulator(BaseModel):
         
         output_dict = {}
         cycle_consi_kps_tensor_stack = torch.empty(0, kps_img_resolu.shape[1], 2, device=kps_img_resolu.device)
-            
-        target_image_with_kps_list = []
+        
         rendered_image_with_kps_list = []
+        rendered_image_NO_kps_list = []
+        
+        target_image_with_kps_list = []
+        target_image_NO_kps_list = []
+        
         cycle_consi_image_with_kps_list = []
         
         target_image_with_kps_list_after_cyc_check = []
@@ -167,17 +171,18 @@ class Articulator(BaseModel):
             # eroded_mask_PIL = resize(eroded_mask_PIL, target_res = 840, resize=True, to_pil=True)
             eroded_mask_PIL.save(f'{self.path_to_save_images}/{index}_eroded_mask.png', bbox_inches='tight')
             
+            # DEBUG
             target_image_PIL = F.to_pil_image(target_image[0])
             #target_image_PIL = resize(target_image_PIL, target_res = 840, resize=True, to_pil=True)
-                
-            # MID-POINTS CLOSEST 
+            
+            # MID-POINTS CLOSEST
             rendered_image_PIL = F.to_pil_image(rendered_image[index])
             rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
             rendered_image_PIL.save(f'{self.path_to_save_images}/{index}_rendered_image_only.png', bbox_inches='tight')
             
             
             start_time = time.time()
-            target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_1_batch, img2=target_image_PIL, index = index ,model=self.sd_model, aug=self.sd_aug)
+            target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_1_batch, img2=target_image_PIL, index = index ,model=self.sd_model, aug=self.sd_aug)
             end_time = time.time()  # Record the end time
             # with open('log.txt', 'a') as file:
             #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
@@ -199,9 +204,14 @@ class Articulator(BaseModel):
             # # Set the background color to grey
             # plt.gcf().set_facecolor('grey')
             target_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_target.png', bbox_inches='tight')
+            
+            rendered_image_Matplot_Fig = tensor_to_matplotlib_figure(rendered_image[index])
+            target_image_Matplot_Fig = tensor_to_matplotlib_figure(target_image[0])
                     
             rendered_image_with_kps_list.append(rendered_image_with_kps)
+            rendered_image_NO_kps_list.append(rendered_image_Matplot_Fig)
             target_image_with_kps_list.append(target_image_with_kps)
+            target_image_NO_kps_list.append(target_image_Matplot_Fig)
             plt.close()
 
             # LOSS CALCULATED AFTER CYCLE-CONSISTENCY CHECK
@@ -211,7 +221,7 @@ class Articulator(BaseModel):
             
             # # Set the background color to grey
             # plt.gcf().set_facecolor('grey')
-            plt.text(80, 0.95, f'Cycle Consistency', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
+            # plt.text(80, 0.95, f'Cycle Consistency', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
             cycle_consi_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_cycle.png', bbox_inches='tight')
             
             cycle_consi_image_with_kps_list.append(cycle_consi_image_with_kps)
@@ -264,6 +274,8 @@ class Articulator(BaseModel):
         "rendered_kps": torch.stack(padded_kps_img_resolu_list),  #[-6:]
         "rendered_image_with_kps": rendered_image_with_kps_list,
         "target_image_with_kps": target_image_with_kps_list,
+        "target_img_NO_kps": target_image_NO_kps_list,
+        "rendered_img_NO_kps": rendered_image_NO_kps_list,
         "target_corres_kps": torch.stack(padded_corres_target_kps_list), 
         "cycle_consi_image_with_kps": cycle_consi_image_with_kps_list,
         "rendered_image_with_kps_list_after_cyc_check": rendered_image_with_kps_list_after_cyc_check,
@@ -383,7 +395,9 @@ class Articulator(BaseModel):
         
         # Creates an empty tensor to hold the final result
         # all_generated_target_img shape is [num_pose, 3, 256, 256]
-        all_generated_target_img = torch.empty(renderer_outputs["image_pred"].shape[0:])
+        # all_generated_target_img = torch.empty(renderer_outputs["image_pred"].shape[0:])
+        
+        all_generated_target_img = {}
         
         for i in range(pose.shape[0]):
         
@@ -391,11 +405,12 @@ class Articulator(BaseModel):
             self.save_all_poses_before_optimisation(pose, renderer_outputs, self.path_to_save_images)
             
             # GENERATING TARGET IMAGES USING DIFFUSION (SD or DF)
-            target_img_rgb = self.sd_Text_to_Target_Img.run_experiment(
+            target_img_rgb = self.diffusion_Text_to_Target_Img.run_experiment(
             input_image = renderer_outputs["image_pred"][i],
             image_fr_path = False
             )
             
+            # target_img_rgb.shape is [1, 3, 256, 256]
             target_image_PIL = F.to_pil_image(target_img_rgb[0])
             #rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
             
@@ -405,8 +420,10 @@ class Articulator(BaseModel):
             # Save the image
             target_image_PIL.save(f'{dir_path}{i}_diff_pose_target_image.png', bbox_inches='tight')
             
-            # Inserts the new image into the final tensor
-            all_generated_target_img[i] = target_img_rgb
+            # # Inserts the new image into the final tensor
+            # all_generated_target_img[i] = target_img_rgb
+            
+            all_generated_target_img["target_img_NO_kps"] = target_img_rgb
         
         start_time = time.time()
         # compute_correspondences for keypoint loss
@@ -418,7 +435,7 @@ class Articulator(BaseModel):
             #bones_predictor_outputs["bones_pred"],    # this is a rest pose    # bones_predictor_outputs["bones_pred"].shape is torch.Size([4, 20, 2, 3]), 4 is batch size, 20 is number of bones, 2 are the two endpoints of the bones and 3 means the 3D point defining one of the end points of the line segment in 3D that defines the bone 
             renderer_outputs["mask_pred"],
             renderer_outputs["image_pred"],            # renderer_outputs["image_pred"].shape is torch.Size([4, 3, 256, 256]), 4 is batch size, 3 is RGB channels, 256 is image resolution
-            all_generated_target_img,                  # CHANGED replaced the target image with sd generated, BEFORE batch["image"],
+            all_generated_target_img["target_img_NO_kps"],                  # CHANGED replaced the target image with sd generated, BEFORE batch["image"],
             # batch["image"]                           # static Target Images
         )
 
@@ -431,6 +448,7 @@ class Articulator(BaseModel):
         outputs = {}
         # TODO: probaly rename the ouputs of the renderer
         
+        # outputs.update(all_generated_target_img)
         outputs.update(renderer_outputs)        # renderer_outputs keys are dict_keys(['image_pred', 'mask_pred', 'albedo', 'shading'])
         outputs.update(correspondences_dict)
 
@@ -474,20 +492,31 @@ class Articulator(BaseModel):
 
         return visuals_dict
     
-    ## Saving all poses with keypoints visualisation
-    def save_all_poses_with_kps(self, model_outputs, path_to_save_img_per_iteration):
+    ## Saving all poses
+    def save_multiple_random_poses(self, model_outputs, path_to_save_img_per_iteration):
         
         for index, item in enumerate(model_outputs["rendered_image_with_kps"]):
-            if not os.path.exists(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_rendered_img_final'):
-                os.makedirs(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_rendered_img_final')
-            model_outputs["rendered_image_with_kps"][index].savefig(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_rendered_img_final/{index}_poses_rendered_image.png', bbox_inches='tight')
-            if not os.path.exists(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_target_img_final'):
-                os.makedirs(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_target_img_final')
-            model_outputs["target_image_with_kps"][index].savefig(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_target_img_final/{index}_poses_target_img.png', bbox_inches='tight')
-                
-                
-    ## Saving all poses without keypoints visualisation
-    def save_all_poses_without_kps(self, articulated_mesh, material, path_to_save_images):
+            
+            # With KPs visualisation
+            if not os.path.exists(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_rendered_img_with_KPs'):
+                os.makedirs(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_rendered_img_with_KPs')
+            model_outputs["rendered_image_with_kps"][index].savefig(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_rendered_img_with_KPs/{index}_poses_rendered_img_with_KPs.png', bbox_inches='tight')
+            if not os.path.exists(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_target_img_with_KPs'):
+                os.makedirs(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_target_img_with_KPs')
+            model_outputs["target_image_with_kps"][index].savefig(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_target_img_with_KPs/{index}_poses_target_img_with_KPs.png', bbox_inches='tight')
+            
+            # Without KPs visualisation
+            if not os.path.exists(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_rendered_img_NO_KPs'):
+                os.makedirs(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_rendered_img_NO_KPs')
+            model_outputs["rendered_img_NO_kps"][index].savefig(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_rendered_img_NO_KPs/{index}_poses_rendered_img_NO_KPs.png', bbox_inches='tight')
+            
+            if not os.path.exists(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_target_img_NO_KPs'):
+                os.makedirs(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_target_img_NO_KPs')
+            model_outputs["target_img_NO_kps"][index].savefig(f'{path_to_save_img_per_iteration}/batch_size_0/all_poses_target_img_NO_KPs/{index}_poses_target_img_NO_KPs.png', bbox_inches='tight')
+            
+
+    ## Saving poses along the azimuth
+    def save_pose_along_azimuth(self, articulated_mesh, material, path_to_save_images):
         
         pose, _ = multi_view.poses_along_azimuth(self.num_pose, device=self.device)
         
@@ -513,30 +542,32 @@ class Articulator(BaseModel):
         
         start_time = time.time()
         
-        dir_path = f'{path_to_save_img_per_iteration}/batch_size_{index_of_image}/rendered_img'
-        os.makedirs(dir_path, exist_ok=True)
-        model_outputs["rendered_image_with_kps"][0].savefig(f'{dir_path}/{iteration}_rendered_image.png', bbox_inches='tight')
-        
-        dir_path = f'{path_to_save_img_per_iteration}/batch_size_{index_of_image}/target_img'
-        os.makedirs(dir_path, exist_ok=True)
-        model_outputs["target_image_with_kps"][0].savefig(f'{dir_path}/{iteration}_target_img.png', bbox_inches='tight')
-        
-        dir_path = f'{path_to_save_img_per_iteration}/batch_size_{index_of_image}/cycle_consi'
-        os.makedirs(dir_path, exist_ok=True)
-        model_outputs["cycle_consi_image_with_kps"][0].savefig(f'{dir_path}/{iteration}_cycle_consi.png', bbox_inches='tight')
-        
-        dir_path = f'{path_to_save_img_per_iteration}/batch_size_{index_of_image}/rendered_image_with_kps_list_after_cyc_check'
-        os.makedirs(dir_path, exist_ok=True)
-        model_outputs["rendered_image_with_kps_list_after_cyc_check"][0].savefig(f'{dir_path}/{iteration}_rendered_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
-        
-        dir_path = f'{path_to_save_img_per_iteration}/batch_size_{index_of_image}/target_image_with_kps_list_after_cyc_check'
-        os.makedirs(dir_path, exist_ok=True)
-        model_outputs["target_image_with_kps_list_after_cyc_check"][0].savefig(f'{dir_path}/{iteration}_target_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
-        
-        end_time = time.time()  # Record the end time
-        print(f"The 'Saving img for every iterations' took {end_time - start_time} seconds to run.")
-        # with open('log.txt', 'a') as file:
-        #     file.write(f"The 'Saving img for every iterations' took {end_time - start_time} seconds to run.\n")
+        for index, item in enumerate(model_outputs["rendered_image_with_kps"]):
+            
+            dir_path = f'{path_to_save_img_per_iteration}/batch_size_{index_of_image}/rendered_img'
+            os.makedirs(dir_path, exist_ok=True)
+            model_outputs["rendered_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_rendered_image.png', bbox_inches='tight')
+
+            dir_path = f'{path_to_save_img_per_iteration}/batch_size_{index_of_image}/target_img'
+            os.makedirs(dir_path, exist_ok=True)
+            model_outputs["target_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_target_img.png', bbox_inches='tight')
+            
+            dir_path = f'{path_to_save_img_per_iteration}/batch_size_{index_of_image}/cycle_consi'
+            os.makedirs(dir_path, exist_ok=True)
+            model_outputs["cycle_consi_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_cycle_consi.png', bbox_inches='tight')
+
+            dir_path = f'{path_to_save_img_per_iteration}/batch_size_{index_of_image}/rendered_image_with_kps_list_after_cyc_check'
+            os.makedirs(dir_path, exist_ok=True)
+            model_outputs["rendered_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_rendered_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
+
+            dir_path = f'{path_to_save_img_per_iteration}/batch_size_{index_of_image}/target_image_with_kps_list_after_cyc_check'
+            os.makedirs(dir_path, exist_ok=True)
+            model_outputs["target_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_target_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
+
+            end_time = time.time()  # Record the end time
+            print(f"The 'Saving img for every iterations' took {end_time - start_time} seconds to run.")
+            # with open('log.txt', 'a') as file:
+            #     file.write(f"The 'Saving img for every iterations' took {end_time - start_time} seconds to run.\n")
     
     
     # For Debugging purpose, save all the poses before optimisation

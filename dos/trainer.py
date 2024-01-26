@@ -231,11 +231,11 @@ class Trainer:
                 file.write(f"The 'neptune logging' took {end_time - start_time} seconds to run.\n")
         
                 
-        ## Saving all poses with keypoints visualisation
-        self.model.save_all_poses_with_kps(model_outputs, self.path_to_save_img_per_iteration)      
+        ## Saving multiple random poses with and without keypoints visualisation
+        self.model.save_multiple_random_poses(model_outputs, self.path_to_save_img_per_iteration)
         
-        ## Saving all poses without keypoints visualisation
-        self.model.save_all_poses_without_kps(articulated_mesh, material, self.path_to_save_images)      
+        ## Saving poses along the azimuth
+        self.model.save_pose_along_azimuth(articulated_mesh, material, self.path_to_save_images)      
             
         return loss_dict["loss"], model_outputs
     
