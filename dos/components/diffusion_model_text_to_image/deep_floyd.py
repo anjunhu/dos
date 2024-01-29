@@ -41,25 +41,20 @@ def seed_everything(seed):
 
 
 class DeepFloyd(nn.Module):
-    def __init__(self, device, cache_dir=None, hf_key=None, torch_dtype=torch.float32):
+    def __init__(self, device, cache_dir=None, hf_key=None, torch_dtype=torch.float16):
         super().__init__()
 
         self.device = device
         self.torch_dtype = torch_dtype
-        self.half_precision_weights = True
         self.pretrained_model_name_or_path: str = "DeepFloyd/IF-I-XL-v1.0"
-        self.weights_dtype = (
-            torch.float16 if self.half_precision_weights else torch.float32
-        )
-        
+        # self.weights_dtype = torch.float16
+       
         self.enable_channels_last_format = True
         
         self.text_encoder = T5EncoderModel.from_pretrained(
             self.pretrained_model_name_or_path,
             subfolder="text_encoder",
-            load_in_8bit=False,
-            # variant="8bit",
-            device_map="auto"
+            device_map="auto" # this makes it memory efficient, helps to avoid getting CUDA out-of-memory error.
         ) 
         
         print(f"Loading Deep Floyd ...")
@@ -67,12 +62,8 @@ class DeepFloyd(nn.Module):
         self.pipe = IFPipeline.from_pretrained(
             self.pretrained_model_name_or_path,
             text_encoder=self.text_encoder,
-            safety_checker=None,
-            watermarker=None,
-            feature_extractor=None,
-            requires_safety_checker=False,
-            variant="fp16" if self.half_precision_weights else None,
-            torch_dtype=self.weights_dtype,
+            variant="fp16",
+            torch_dtype= torch.float16  #
         ).to(self.device)
 
 
@@ -106,9 +97,9 @@ class DeepFloyd(nn.Module):
     ):
         input_dtype = latents.dtype
         return self.unet(
-            latents.to(self.weights_dtype),
-            t.to(self.weights_dtype),
-            encoder_hidden_states=encoder_hidden_states.to(self.weights_dtype),
+            latents.to(self.torch_dtype),
+            t.to(self.torch_dtype),
+            encoder_hidden_states=encoder_hidden_states.to(self.torch_dtype),
         ).sample.to(input_dtype)
 
 
