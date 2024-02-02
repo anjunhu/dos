@@ -1,16 +1,14 @@
-torch_dtype: float16
+_target_: dos.components.diffusion_model_text_to_image.diffusion_sds.DiffusionForTargetImg # Class Name
 output_dir: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/outputs
 init_image_path: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-back-1.png
 vis_name: cow-sds_latent-l2_image-600-lr1e-1.png
-prompts: ["A DSLR photo of a back-view full-size cow running very fast. The photo should have a grey background."]
-negative_prompts: [" "]
-select_deep_floyd: False
-mode: sds_latent-l2_image
-optimizer_class: SGD
-lr: 1e4
-lr_l2: 1e4
+prompts: 'A DSLR photo of a back-view full-size cow running very fast. The photo should have a grey background.' # DOS-1330  opti multi_view_azimu, GS20, Num_Infe50
+negative_prompts: 'cartoon, dead, shadow, reflection'     # the string shouldn't be in a square brackets ['']
+mode: sds_latent-l2_image # sds_image #
+lr: 0.1  # For DeepFloyd
+lr_l2: 1e4  # For SD+SDS
 seed: 2
-num_inference_steps: 20
-guidance_scale: 100
+num_inference_steps: 50
+guidance_scale: 20
+select_deep_floyd: False
 image_fr_path: True
-schedule: [600, 600]

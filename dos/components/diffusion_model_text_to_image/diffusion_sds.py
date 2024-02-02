@@ -25,6 +25,7 @@ from omegaconf import OmegaConf
 from dos.components.diffusion_model_text_to_image.deep_floyd import DeepFloyd
 from dos.components.diffusion_model_text_to_image.sd import (StableDiffusion,
                                                              seed_everything)
+from dos.utils.framework import read_configs_and_instantiate
 
 schedule = np.array([600] * 50).astype('int32')
 device=torch.device('cuda:0')
@@ -263,29 +264,8 @@ class DiffusionForTargetImg:
         
 
 if __name__ == '__main__':    
-    # Parse command line arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument('config', type=str, help='Path to the configuration file')
-    args = parser.parse_args()
-
-    # Load the configuration
-    config = OmegaConf.load(args.config)
-
-    # Convert the configuration to a dictionary
-    config_dict = OmegaConf.to_container(config)
-
-    # Map the string to the actual class
-    config_dict["optimizer_class"] = getattr(torch.optim, config_dict["optimizer_class"])
-
-    # Map schedule to numpy array, use linspace to generate the schedule
-    if "schedule" in config_dict and config_dict["schedule"] is not None:
-        config_dict["schedule"] = np.linspace(config_dict["schedule"][0], config_dict["schedule"][1], config_dict["num_inference_steps"]).astype('int32')
-
-    # Map torch_dtype string to the actual torch dtype
-    config_dict["torch_dtype"] = getattr(torch, config_dict["torch_dtype"])
-
     # Use the configuration
-    sd_text_to_target_img = DiffusionForTargetImg(**config_dict)
+    sd_text_to_target_img, _ = read_configs_and_instantiate()
 
     # Call the fn run_experiment
     sd_text_to_target_img.run_experiment(None)
