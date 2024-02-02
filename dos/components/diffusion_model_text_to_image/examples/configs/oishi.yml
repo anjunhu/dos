@@ -1,0 +1,16 @@
+torch_dtype: float16
+cache_dir: /work/oishideb/cache/huggingface_hub
+output_dir: /work/oishideb/dos_output_files/cow/output-new
+init_image_path: /users/oishideb/laam/dos/examples/data/cow.png
+vis_name: cow-sds_latent-l2_image-600-lr1e-1.png
+prompts: ["a running cow"]
+negative_prompts: [" "]
+mode: sds_latent-l2_image
+optimizer_class: SGD
+lr: 0.1
+lr_l2: 1e4
+seed: 2
+num_inference_steps: 50
+guidance_scale: 100
+image_fr_path: True
+schedule: [600, 600]

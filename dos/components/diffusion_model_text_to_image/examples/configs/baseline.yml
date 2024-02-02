@@ -1,0 +1,16 @@
+torch_dtype: float16
+output_dir: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/outputs
+init_image_path: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-back-1.png
+vis_name: cow-sds_latent-l2_image-600-lr1e-1.png
+prompts: ["A DSLR photo of a back-view full-size cow running very fast. The photo should have a grey background."]
+negative_prompts: [" "]
+select_deep_floyd: False
+mode: sds_latent-l2_image
+optimizer_class: SGD
+lr: 1e4
+lr_l2: 1e4
+seed: 2
+num_inference_steps: 20
+guidance_scale: 100
+image_fr_path: True
+schedule: [600, 600]
