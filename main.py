@@ -1,4 +1,4 @@
-import OmegaConf
+from omegaconf import OmegaConf
 
 from dos.utils.framework import read_configs_and_instantiate
 
