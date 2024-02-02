@@ -52,11 +52,11 @@ model:
     prompts: 'A DSLR photo of a back-view full-size cow running very fast. The photo should have a grey background.' # DOS-1330  opti multi_view_azimu, GS20, Num_Infe50
     negative_prompts: 'cartoon, dead, shadow, reflection'     # the string shouldn't be in a square brackets ['']
     mode: sds_latent-l2_image # sds_image #
-    lr: 1e4  # For DeepFloyd
+    lr: 0.1  # For DeepFloyd
     lr_l2: 1e4  # For SD+SDS
     seed: 2
-    num_inference_steps: 20
-    guidance_scale: 100
+    num_inference_steps: 50
+    guidance_scale: 20
     select_deep_floyd: False
 
 renderer:   # variable Name
