@@ -81,7 +81,7 @@ class DiffusionForTargetImg:
         
         seed_everything(self.seed)
 
-    def run_experiment(self, input_image, image_fr_path, index):
+    def run_experiment(self, input_image, image_fr_path=False, index=0):
         
         if self.select_deep_floyd:
             text_embeddings = self.df.get_text_embeds(self.prompts, self.negative_prompts)
