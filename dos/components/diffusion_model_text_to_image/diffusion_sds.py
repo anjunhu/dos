@@ -1,24 +1,30 @@
 ##------- CODE partly taken from https://github.com/tomasjakab/laam/blob/sds-investigation/dos/examples/diffusion_sds_example.py
 
 import os
-import torch
-import torchvision
-import numpy as np
-from PIL import Image
-from tqdm import tqdm
-from einops import rearrange
-import torch.nn.functional as F
-from functools import partial
-from pathlib import Path
-import torchvision.transforms.functional as torchvision_F
-
 # add dos to path
 import sys
+from functools import partial
+from pathlib import Path
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+import torchvision
+import torchvision.transforms.functional as torchvision_F
+from einops import rearrange
+from PIL import Image
+from tqdm import tqdm
+
 sys.path.append('../../dos')
 
-from dos.components.diffusion_model_text_to_image.sd import StableDiffusion
-from dos.components.diffusion_model_text_to_image.sd import seed_everything
+import argparse
+
+import torch.optim
+from omegaconf import OmegaConf
+
 from dos.components.diffusion_model_text_to_image.deep_floyd import DeepFloyd
+from dos.components.diffusion_model_text_to_image.sd import (StableDiffusion,
+                                                             seed_everything)
 
 schedule = np.array([600] * 50).astype('int32')
 device=torch.device('cuda:0')
@@ -256,33 +262,30 @@ class DiffusionForTargetImg:
         return pred_rgb
         
 
-if __name__ == '__main__':
-    
-    from sd import StableDiffusion
-    from sd import seed_everything
+if __name__ == '__main__':    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('config', type=str, help='Path to the configuration file')
+    args = parser.parse_args()
 
-    # Usage:
-    # creating an object for the class 'Stable_Diffusion_Text_to_Target_Img'
-    sd_text_to_target_img = Stable_Diffusion_Text_to_Target_Img(
-        device=torch.device('cuda:0'),
-        torch_dtype=torch.float16,
-        cache_dir="/work/oishideb/cache/huggingface_hub",
-        output_dir='/work/oishideb/dos_output_files/cow/output-new',
-        init_image_path='/users/oishideb/laam/dos/examples/data/cow.png',
-        vis_name='cow-sds_latent-l2_image-600-lr1e-1.png',
-        prompts=["a running cow"],
-        negative_prompts=[" "],
-        mode="sds_latent-l2_image",
-        optimizer_class=torch.optim.SGD,
-        lr=0.1,
-        lr_l2=1e4,
-        seed=2,
-        num_inference_steps=50,
-        guidance_scale=100,
-        image_fr_path = True,
-        input_image = None,
-        schedule = np.array([600] * 50).astype('int32')
-    )
+    # Load the configuration
+    config = OmegaConf.load(args.config)
+
+    # Convert the configuration to a dictionary
+    config_dict = OmegaConf.to_container(config)
+
+    # Map the string to the actual class
+    config_dict["optimizer_class"] = getattr(torch.optim, config_dict["optimizer_class"])
+
+    # Map schedule to numpy array, use linspace to generate the schedule
+    if "schedule" in config_dict and config_dict["schedule"] is not None:
+        config_dict["schedule"] = np.linspace(config_dict["schedule"][0], config_dict["schedule"][1], config_dict["num_inference_steps"]).astype('int32')
+
+    # Map torch_dtype string to the actual torch dtype
+    config_dict["torch_dtype"] = getattr(torch, config_dict["torch_dtype"])
+
+    # Use the configuration
+    sd_text_to_target_img = DiffusionForTargetImg(**config_dict)
 
     # Call the fn run_experiment
-    sd_text_to_target_img.run_experiment()
+    sd_text_to_target_img.run_experiment(None)
