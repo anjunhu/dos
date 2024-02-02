@@ -53,9 +53,8 @@ class InfiniteDataset(torch.utils.data.Dataset):
 class Trainer:
     train_dataset: Dataset
     model: nn.Module
-    path_to_save_img_per_iteration : str
-    path_to_save_images: str
     save_each_iteration: bool
+    path_to_save_img_per_iteration : str = None
     val_dataset: Optional[Dataset] = None
     batch_size: int = 32
     val_batch_size: Optional[int] = None
@@ -203,7 +202,7 @@ class Trainer:
 
         # rotation, translation, forward_aux = self.model(batch)
         
-        model_outputs, articulated_mesh, material = self.model(batch)
+        model_outputs = self.model(batch) 
         
         metrics_dict = self.model.get_metrics_dict(model_outputs, batch)
         
@@ -230,13 +229,6 @@ class Trainer:
             with open('log.txt', 'a') as file:
                 file.write(f"The 'neptune logging' took {end_time - start_time} seconds to run.\n")
         
-                
-        ## Saving multiple random poses with and without keypoints visualisation
-        self.model.save_multiple_random_poses(model_outputs, self.path_to_save_img_per_iteration)
-        
-        ## Saving poses along the azimuth
-        self.model.save_pose_along_azimuth(articulated_mesh, material, self.path_to_save_images)      
-            
         return loss_dict["loss"], model_outputs
     
 

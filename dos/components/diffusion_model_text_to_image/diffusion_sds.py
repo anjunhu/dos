@@ -39,7 +39,7 @@ class DiffusionForTargetImg:
         lr=0.1,
         lr_l2=1e4, 
         seed=2, 
-        num_inference_steps=50, 
+        num_inference_steps=20, 
         guidance_scale=100, 
         schedule=schedule,
         optimizer_class=optimizer_class,
@@ -75,8 +75,7 @@ class DiffusionForTargetImg:
         
         seed_everything(self.seed)
 
-        
-    def run_experiment(self, input_image, image_fr_path):
+    def run_experiment(self, input_image, image_fr_path, index):
         
         if self.select_deep_floyd:
             text_embeddings = self.df.get_text_embeds(self.prompts, self.negative_prompts)
@@ -88,7 +87,6 @@ class DiffusionForTargetImg:
 
         # init img
         height, width = 256, 256
-        
         
         if self.image_fr_path == True:
             if self.init_image_path is not None:
@@ -241,20 +239,19 @@ class DiffusionForTargetImg:
         all_imgs_save = all_imgs.copy()
         all_imgs_save = all_imgs_save.clip(0, 1)
         all_imgs_save = (all_imgs_save * 255).round().astype('uint8')
-        out_path = Path(self.output_dir) / self.vis_name
+        file_name = f'{index}_cow-sds_latent-l2_image-600-lr1e-1.jpg'
+        out_path = Path(self.output_dir) / file_name
         out_path.parent.mkdir(exist_ok=True, parents=True)
         Image.fromarray(all_imgs_save).save(out_path)
         
         # pred_rgb size is 256x256 
         pred_rgb_PIL = torchvision_F.to_pil_image(pred_rgb[0])
-        pred_rgb_PIL.save(f'{self.output_dir}/pred_rgb.jpg')
+        pred_rgb_PIL.save(f'{self.output_dir}/{index}_pred_rgb.jpg')
         
         if self.select_deep_floyd == False:
             # rgb_decoded size is 512x512
             rgb_decoded_PIL = torchvision_F.to_pil_image(rgb_decoded[0])
-            rgb_decoded_PIL.save(f'{self.output_dir}/rgb_decoded.jpg')
-        
-            # return pred_rgb,  rgb_decoded
+            rgb_decoded_PIL.save(f'{self.output_dir}/{index}_rgb_decoded.jpg')
         
         return pred_rgb
         
