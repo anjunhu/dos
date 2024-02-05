@@ -5,6 +5,7 @@ import os
 import sys
 from functools import partial
 from pathlib import Path
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -13,15 +14,20 @@ import torchvision.transforms.functional as torchvision_F
 from einops import rearrange
 from PIL import Image
 from tqdm import tqdm
+
 sys.path.append('../../dos')
 import argparse
+
 import torch.optim
 from omegaconf import OmegaConf
+
 from dos.components.diffusion_model_text_to_image.deep_floyd import DeepFloyd
 from dos.components.diffusion_model_text_to_image.sd import (StableDiffusion,
                                                              seed_everything)
-from dos.components.diffusion_model_text_to_image.sd_dds_loss import StableDiffusionDDSLoss
-from dos.components.diffusion_model_text_to_image.sd_XL import StableDiffusionXL
+from dos.components.diffusion_model_text_to_image.sd_dds_loss import \
+    StableDiffusionDDSLoss
+from dos.components.diffusion_model_text_to_image.sd_XL import \
+    StableDiffusionXL
 from dos.utils.framework import read_configs_and_instantiate
 
 schedule = np.array([600] * 50).astype('int32')
@@ -37,9 +43,9 @@ class DiffusionForTargetImg:
         init_image_path=None,
         output_dir = "sd_sds_output",
         vis_name = "cow-sds_latent-l2_image-600-lr1e-1.jpg", 
-        prompts_source = ["a cow with front leg raised"], 
+        prompts = ["a cow with front leg raised"], 
         negative_prompts = [''],
-        prompts_target = [],
+        prompts_source = [],
         mode = "sds_latent-l2_image", 
         lr=0.1,
         lr_l2=1e4, 
@@ -50,7 +56,7 @@ class DiffusionForTargetImg:
         optimizer_class=optimizer_class,
         torch_dtype=torch_dtype,
         image_fr_path = False,
-        select_diffusion_option = 'sd_dds_loss',
+        select_diffusion_option = 'sd',
         dds = False,
     ):
         
@@ -60,7 +66,7 @@ class DiffusionForTargetImg:
         self.vis_name = vis_name
         self.prompts_source = prompts_source
         self.negative_prompts = negative_prompts
-        self.prompts_target = prompts_target
+        self.prompts = prompts
         self.mode = mode
         self.optimizer_class = optimizer_class
         self.lr = lr
@@ -89,15 +95,15 @@ class DiffusionForTargetImg:
     def run_experiment(self, input_image, image_fr_path=False, index=0):
         
         if self.select_diffusion_option=='df':
-            text_embeddings = self.df.get_text_embeds(self.prompts_target, self.negative_prompts)
+            text_embeddings = self.df.get_text_embeds(self.prompts, self.negative_prompts)
         elif self.select_diffusion_option=='sd':
             # Uses pre-trained CLIP Embeddings; # Prompts -> text embeds
             # SHAPE OF text_embeddings [2, 77, 768]
-            text_embeddings = self.sd.get_text_embeds(self.prompts_target, self.negative_prompts)
+            text_embeddings = self.sd.get_text_embeds(self.prompts, self.negative_prompts)
         elif self.select_diffusion_option=='sd_XL':
-            text_embeddings = self.sd_XL.get_text_embeds(self.prompts_target, self.negative_prompts)
+            text_embeddings = self.sd_XL.get_text_embeds(self.prompts, self.negative_prompts)
         elif self.select_diffusion_option=='sd_dds_loss':
-            text_embedding_source, text_embeddings = self.sd_dds_loss.get_text_embeds(self.prompts_source, self.negative_prompts, self.prompts_target)
+            text_embedding_source, text_embeddings = self.sd_dds_loss.get_text_embeds(self.prompts_source, self.negative_prompts, self.prompts)
         
         # init img
         height, width = 256, 256

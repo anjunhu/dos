@@ -12,5 +12,4 @@ lr_l2: 1e4  # For SD+SDS
 seed: 2
 num_inference_steps: 50
 guidance_scale: 20
-select_deep_floyd: False
 image_fr_path: True

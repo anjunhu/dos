@@ -53,7 +53,7 @@ model:
     # prompts: 'A photograph of a single cow running very fast, back view.' #.The photo should have a grey background.' # DOS-1338  opti multi_view_azimu, GS20, Num_Infe50
     prompts_source: 'A photograph of a cow standing, back view.' #.The photo should have a grey background.' # DOS-1339  opti multi_view_azimu, GS20, Num_Infe50
     negative_prompts: 'front view, side view' #  , cartoon, dead, shadow, reflection'     # the string shouldn't be in a square brackets ['']
-    prompts_target: 'A photograph of a cow running very fast, back view.'
+    prompts: 'A photograph of a cow running very fast, back view.'
     mode: sds_latent-l2_image # Options are sds_image OR sds_latent-l2_image #
     lr: 0.1  # For DeepFloyd
     lr_l2: 1e4  # For SD+SDS
