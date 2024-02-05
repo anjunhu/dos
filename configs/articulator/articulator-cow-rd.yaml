@@ -25,14 +25,15 @@ model:
     body_bones_type: z_minmax_y+
     temperature: 0.05
 
-  path_to_save_images: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1330-GS_20_Inf50
-  num_pose: 25
-  num_sample_bone_line: 2
+  path_to_save_images: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1402_sdXL/
+  num_pose: 20
+  num_sample_bone_line: 4  # 
   mode_kps_selection: "kps_fr_sample_on_bone_line" # Options are "kps_fr_sample_on_bone_line" OR "kps_fr_sample_farthest_points"
   shape_template_path: /scratch/shared/beegfs/tomj/projects/articulator/data/synth_animals/shape_templates/cow_female-rd/Cow-OBJ-v01/Cow_Highpoly.obj
   enable_texture_predictor: False
   view_option: "multi_view_azimu" # Options are "multi_view_azimu"; "multi_view_rand"; "single_view"
-
+  debug_mode: True # THIS WILL SWITCH OFF THE LOADING TO FUSE'S STABLE DIFFUSION MODEL
+  
   articulation_predictor:
     _target_: dos.predictors.articulation_predictor.ArticulationPredictor  # Class Name
     size_dataset: 49
@@ -46,18 +47,22 @@ model:
   diffusion_Text_to_Target_Img:  # variable Name
     _target_: dos.components.diffusion_model_text_to_image.diffusion_sds.DiffusionForTargetImg # Class Name
     cache_dir: /work/oishideb/cache/huggingface_hub
-    output_dir: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1330-GS_20_Inf50/sd_sds_output/
+    output_dir: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1402_sdXL/sd_sds_output/
     init_image_path: /users/oishideb/laam/dos/examples/data/cow.png
     vis_name: cow-sds_latent-l2_image-600-lr1e-1.jpg
-    prompts: 'A DSLR photo of a back-view full-size cow running very fast. The photo should have a grey background.' # DOS-1330  opti multi_view_azimu, GS20, Num_Infe50
-    negative_prompts: 'cartoon, dead, shadow, reflection'     # the string shouldn't be in a square brackets ['']
-    mode: sds_latent-l2_image # sds_image #
+    # prompts: 'A photograph of a single cow running very fast, back view.' #.The photo should have a grey background.' # DOS-1338  opti multi_view_azimu, GS20, Num_Infe50
+    prompts_source: 'A photograph of a cow standing, back view.' #.The photo should have a grey background.' # DOS-1339  opti multi_view_azimu, GS20, Num_Infe50
+    negative_prompts: 'front view, side view' #  , cartoon, dead, shadow, reflection'     # the string shouldn't be in a square brackets ['']
+    prompts_target: 'A photograph of a cow running very fast, back view.'
+    mode: sds_latent-l2_image # Options are sds_image OR sds_latent-l2_image #
     lr: 0.1  # For DeepFloyd
     lr_l2: 1e4  # For SD+SDS
     seed: 2
-    num_inference_steps: 50
-    guidance_scale: 20
-    select_deep_floyd: False
+    num_inference_steps: 30
+    guidance_scale: 30
+    dds: False
+    select_diffusion_option: 'sd_XL' # Options are sd, sd_XL, df, sd_dds_loss  # by default is sds loss
+    image_fr_path: False
 
 renderer:   # variable Name
   _target_: dos.modules.renderer.Renderer # Class Name
@@ -67,7 +72,7 @@ renderer:   # variable Name
 path_to_save_img_per_iteration: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/
 checkpoint_root_dir: /work/oishideb/articulation_cow_chkpts
 experiment_name: articulator-dev-0.1
-save_each_iteration: False
+save_each_iteration: False 
 evaluate_the_model: False
 
 device: cuda:0
@@ -77,7 +82,7 @@ device: cuda:0
 learning_rate: 0.1  # tried with 0.01, 0.5, 0.9, 1;   # 1e-4
 
 # for debugging
-num_iterations: 8
+num_iterations: 15
 num_vis_iterations: 1
 num_eval_iterations: 10
 save_checkpoint_freq: 50

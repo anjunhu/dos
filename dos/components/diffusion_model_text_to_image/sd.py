@@ -17,7 +17,7 @@ class SpecifyGradient(torch.autograd.Function):
     @staticmethod
     @custom_fwd
     def forward(ctx, input_tensor, gt_grad):
-        ctx.save_for_backward(gt_grad) 
+        ctx.save_for_backward(gt_grad)
         
         # dummy loss value
         return torch.zeros([1], device=input_tensor.device, dtype=input_tensor.dtype)
@@ -53,6 +53,8 @@ class StableDiffusion(nn.Module):
             model_key = "stabilityai/stable-diffusion-2-base"
         elif self.sd_version == '1.5':
             model_key = "runwayml/stable-diffusion-v1-5"
+        elif self.sd_version == 'sd_XL':
+             model_key = "stabilityai/stable-diffusion-xl-base-1.0"
         else:
             raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
         
@@ -71,13 +73,6 @@ class StableDiffusion(nn.Module):
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
         self.alphas = self.scheduler.alphas_cumprod.to(self.device) # for convenience
         
-        # added for DDS loss
-        self.sigmas = torch.sqrt(1 - self.scheduler.alphas_cumprod).to(self.device, dtype=self.torch_dtype)  
-        self.alpha_exp = 0
-        self.sigma_exp = 0
-        self.t_min = 50
-        self.t_max = 950
-
         print(f'[INFO] loaded stable diffusion!')
 
     def get_text_embeds(self, prompt, negative_prompt):
@@ -104,6 +99,7 @@ class StableDiffusion(nn.Module):
     def train_step(
             self, text_embeddings, pred_rgb=None, latents=None, guidance_scale=100, loss_weight=1.0, min_step_pct=0.02, 
             max_step_pct=0.98, return_aux=False, fixed_step=None, noise_random_seed=None):
+        
         text_embeddings = text_embeddings.to(self.torch_dtype)
 
         #

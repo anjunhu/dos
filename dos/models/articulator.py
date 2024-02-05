@@ -49,7 +49,8 @@ class Articulator(BaseModel):
         shape_template_path=None,
         diffusion_Text_to_Target_Img=None,
         device = "cuda",
-        view_option = "multi_view_azimu"
+        view_option = "multi_view_azimu",
+        debug_mode = True,
     ):
         super().__init__()
         self.path_to_save_images = path_to_save_images
@@ -83,21 +84,24 @@ class Articulator(BaseModel):
         
         self.cycle_check_img_save = False
         
-        # LOADING ODISE MODEL
-        start_time = time.time()
-        # 'diffusion_ver' options are v1-5, v1-3, v1-4, v1-5, v2-1-base
-        # 'image_size' is for the sd input for the Fuse model i.e 960
-        # 'timestep' for diffusion should be in the range [0, 1000], 0 for no noise added
-        # 'block_indices' is selecting different layers from the UNet decoder for extracting sd features, only the first three are used by default.
-        self.sd_model, self.sd_aug = load_model(
-            config_path='Panoptic/odise_label_coco_50e.py',
-            diffusion_ver='v1-5',
-            image_size=960,
-            num_timesteps=100,
-            block_indices=(2, 5, 8, 11)
-        )
-        end_time = time.time()  # Record the end time
-        print(f"The Fuse model loading took {end_time - start_time} seconds to run.\n")
+        self.debug_mode = debug_mode
+        
+        if debug_mode == False:
+            # LOADING ODISE MODEL
+            start_time = time.time()
+            # 'diffusion_ver' options are v1-5, v1-3, v1-4, v1-5, v2-1-base
+            # 'image_size' is for the sd input for the Fuse model i.e 960
+            # 'timestep' for diffusion should be in the range [0, 1000], 0 for no noise added
+            # 'block_indices' is selecting different layers from the UNet decoder for extracting sd features, only the first three are used by default.
+            self.sd_model, self.sd_aug = load_model(
+                config_path='Panoptic/odise_label_coco_50e.py',
+                diffusion_ver='v1-5',
+                image_size=960,
+                num_timesteps=100,
+                block_indices=(2, 5, 8, 11)
+            )
+            end_time = time.time()  # Record the end time
+            print(f"The Fuse model loading took {end_time - start_time} seconds to run.\n")
 
 
     def _load_shape_template(self, shape_template_path):
