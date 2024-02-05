@@ -1,8 +1,10 @@
 ##------- CODE taken from https://github.com/tomasjakab/laam/blob/sds-investigation/dos/video3d/diffusion/sd.py. 
 
 import os
+
+from diffusers import (AutoencoderKL, DDIMScheduler, PNDMScheduler,
+                       UNet2DConditionModel)
 from transformers import CLIPTextModel, CLIPTokenizer, logging
-from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler, DDIMScheduler
 
 # suppress partial model loading warning
 logging.set_verbosity_error()
@@ -10,8 +12,8 @@ logging.set_verbosity_error()
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.cuda.amp import custom_bwd, custom_fwd
 
-from torch.cuda.amp import custom_bwd, custom_fwd 
 
 class SpecifyGradient(torch.autograd.Function):
     @staticmethod
@@ -354,6 +356,7 @@ class StableDiffusion(nn.Module):
 if __name__ == '__main__':
 
     import argparse
+
     import matplotlib.pyplot as plt
 
     parser = argparse.ArgumentParser()

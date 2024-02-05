@@ -89,6 +89,10 @@ class DiffusionForTargetImg:
             self.sd_dds_loss = StableDiffusionDDSLoss(
                 device, cache_dir, torch_dtype=torch_dtype
             )
+        else:
+            raise ValueError(
+                f"Unknown diffusion option: {self.select_diffusion_option}"
+            )
 
         self.image_fr_path = image_fr_path
         self.dds = dds
@@ -138,15 +142,15 @@ class DiffusionForTargetImg:
                 # .repeat(text_embeddings.shape[0] // 2, 1, 1, 1) takes this single-item batch and repeats it.
                 # The image is not repeated across the color channels, height, or width dimensions (1, 1, 1) but is repeated text_embeddings.shape[0] // 2 times along the batch dimension.
                 # This creates a batch of images where each image in the batch is identical.
-
+                
+                # prompts can be a list of string or a single string
+                n_prompts = 1 if isinstance(self.prompts, str) else len(self.prompts)
                 img = img[None].repeat(
-                    text_embeddings.shape[0] // 2, 1, 1, 1
+                    n_prompts, 1, 1, 1
                 )  # shape is torch.Size([1, 3, 256, 256])
                 pred_rgb = img
             else:
-                pred_rgb = torch.zeros(
-                    (text_embeddings.shape[0] // 2, 3, height, width)
-                )
+                pred_rgb = torch.zeros((len(self.prompts), 3, height, width))
 
         else:
 
@@ -165,8 +169,14 @@ class DiffusionForTargetImg:
 
         def image_to_latents(pred_rgb):
             # interp to 512x512 to be fed into vae.
+            encoder_image_size = (
+                1024 if self.select_diffusion_option == "sd_XL" else 512
+            )
             pred_rgb_512 = F.interpolate(
-                pred_rgb, (512, 512), mode="bilinear", align_corners=False
+                pred_rgb,
+                (encoder_image_size, encoder_image_size),
+                mode="bilinear",
+                align_corners=False,
             )
             pred_rgb_512 = pred_rgb_512.to(self.torch_dtype)
 
@@ -276,7 +286,8 @@ class DiffusionForTargetImg:
                 )
 
                 # Decoding the Latent to image space for Stable Diffusion
-                rgb_decoded = self.sd.decode_latents(latents)
+                sd = self.sd if self.select_diffusion_option == "sd" else self.sd_XL
+                rgb_decoded = sd.decode_latents(latents)
                 print(
                     f"rgb_decoded: min={rgb_decoded.min().item():.4f}, max={rgb_decoded.max().item():.4f}"
                 )
