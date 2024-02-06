@@ -59,6 +59,7 @@ class DiffusionForTargetImg:
         torch_dtype=torch_dtype,
         image_fr_path=False,
         select_diffusion_option="sd",
+        use_nfsd=False,
         dds=False,
     ):
 
@@ -80,6 +81,7 @@ class DiffusionForTargetImg:
         self.schedule = schedule
         self.torch_dtype = torch_dtype
         self.select_diffusion_option = select_diffusion_option
+        self.use_nfsd = use_nfsd
 
         if self.select_diffusion_option == "df":
             self.df = DeepFloyd(device, cache_dir, torch_dtype=torch_dtype)
@@ -111,7 +113,7 @@ class DiffusionForTargetImg:
             # Uses pre-trained CLIP Embeddings; # Prompts -> text embeds
             # SHAPE OF text_embeddings [2, 77, 768]
             text_embeddings = self.sd.get_text_embeds(
-                self.prompts, self.negative_prompts
+                self.prompts, self.negative_prompts, use_nfsd=self.use_nfsd
             )
         elif self.select_diffusion_option == "sd_XL":
             text_embeddings = self.sd_XL.get_text_embeds(
@@ -271,6 +273,7 @@ class DiffusionForTargetImg:
                     guidance_scale=self.guidance_scale,
                     fixed_step=self.schedule[i],
                     return_aux=True,
+                    use_nfsd=self.use_nfsd
                 )
                 if self.mode == 'sds_image':
                     latents = aux["latents"]
