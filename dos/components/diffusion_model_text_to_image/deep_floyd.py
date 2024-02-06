@@ -1,11 +1,11 @@
 ##------- CODE partly taken from  https://github.com/threestudio-project/threestudio/blob/main/threestudio/models/guidance/deep_floyd_guidance.py
 
 import os
-from transformers import CLIPTextModel, CLIPTokenizer, logging
-from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler, DDIMScheduler
-from diffusers import IFPipeline
-from typing import Union, List, Tuple
-from transformers import T5EncoderModel
+from typing import List, Tuple, Union
+
+from diffusers import (AutoencoderKL, DDIMScheduler, IFPipeline, PNDMScheduler,
+                       UNet2DConditionModel)
+from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, logging
 
 # suppress partial model loading warning
 logging.set_verbosity_error()
@@ -13,8 +13,8 @@ logging.set_verbosity_error()
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.cuda.amp import custom_bwd, custom_fwd
 
-from torch.cuda.amp import custom_bwd, custom_fwd 
 
 class SpecifyGradient(torch.autograd.Function):
     @staticmethod
@@ -166,7 +166,7 @@ class DeepFloyd(nn.Module):
         
         noise_pred_text, predicted_variance = noise_pred_text.split(3, dim=1)
         noise_pred_uncond, _ = noise_pred_uncond.split(3, dim=1)
-        noise_pred = noise_pred_text + guidance_scale * (
+        noise_pred = noise_pred_uncond + guidance_scale * (
             noise_pred_text - noise_pred_uncond
         )
         
