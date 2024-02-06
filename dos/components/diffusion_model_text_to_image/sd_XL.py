@@ -213,9 +213,6 @@ class StableDiffusionXL(nn.Module):
             latents = self.encode_imgs(pred_rgb_1024)
         else:
             b = latents.size(0)
-            latents = F.interpolate(
-                latents, (128, 128), mode="bilinear", align_corners=False
-            )
 
         add_text_embeds = pooled_prompt_embeds
         res = 1024  # if self.opt.latent else self.opt.res_fine

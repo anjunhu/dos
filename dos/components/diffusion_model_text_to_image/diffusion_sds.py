@@ -52,6 +52,7 @@ class DiffusionForTargetImg:
         lr_l2=1e4,
         seed=2,
         num_inference_steps=20,
+        l2_image_period=1,
         guidance_scale=100,
         schedule=schedule,
         optimizer_class=optimizer_class,
@@ -74,6 +75,7 @@ class DiffusionForTargetImg:
         self.lr_l2 = lr_l2
         self.seed = seed
         self.num_inference_steps = num_inference_steps
+        self.l2_image_period = l2_image_period
         self.guidance_scale = guidance_scale
         self.schedule = schedule
         self.torch_dtype = torch_dtype
@@ -270,7 +272,8 @@ class DiffusionForTargetImg:
                     fixed_step=self.schedule[i],
                     return_aux=True,
                 )
-                latents = aux["latents"]
+                if self.mode == 'sds_image':
+                    latents = aux["latents"]
                 latents.retain_grad()
                 loss.backward()
 
@@ -286,17 +289,17 @@ class DiffusionForTargetImg:
                 )
 
                 # Decoding the Latent to image space for Stable Diffusion
+                # TODO: use the same variable name for all the models
                 sd = self.sd if self.select_diffusion_option == "sd" else self.sd_XL
                 rgb_decoded = sd.decode_latents(latents)
                 print(
                     f"rgb_decoded: min={rgb_decoded.min().item():.4f}, max={rgb_decoded.max().item():.4f}"
                 )
-
                 optimizer.step()
                 latents.grad = None
 
                 # optimize pred_rgb to be close to rgb_decoded
-                if self.mode == "sds_latent-l2_image":
+                if self.mode == "sds_latent-l2_image" and i % self.l2_image_period == 0:
                     optimizer_l2.zero_grad()
 
                     rgb_decoded_ = F.interpolate(
