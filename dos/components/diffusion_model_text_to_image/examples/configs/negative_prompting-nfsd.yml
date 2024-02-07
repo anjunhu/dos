@@ -3,7 +3,7 @@ output_dir: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/outp
 # init_image_path: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-front-1.png
 # init_image_path: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-back-1.png
 init_image_path: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-side-1.png
-vis_name: cow-sds_latent-l2_image-600-lr1e-1.png
+vis_name: cow-sds_latent-l2_image-nfsd-600-lr1e-1.png
 prompts: "a photograph of a single cow running very fast, back view"
 negative_prompts: "front view, side view"
 mode: sds_latent-l2_image # sds_image #

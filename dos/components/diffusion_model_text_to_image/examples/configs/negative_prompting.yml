@@ -2,8 +2,12 @@ _target_: dos.components.diffusion_model_text_to_image.diffusion_sds.DiffusionFo
 output_dir: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/outputs
 # init_image_path: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-front-1.png
 # init_image_path: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-back-1.png
+# init_image_path: [/scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-side-1.png, /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-back-1.png]
+# init_image_path: [/scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-front-1.png, /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-side-1.png, /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-back-1.png]
+# init_image_path: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-*.png
 init_image_path: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-side-1.png
-vis_name: cow-sds_latent-l2_image-600-lr1e-1.png
+# vis_name: cow-batch-sds_latent-l2_image-600-lr1e-1.jpg
+vis_name: cow-sds_latent-l2_image-600-lr1e-1.jpg
 prompts: "a photograph of a single cow running very fast, back view"
 negative_prompts: "front view, side view"
 mode: sds_latent-l2_image # sds_image #
@@ -14,3 +18,4 @@ seed: 2
 num_inference_steps: 50
 guidance_scale: 20
 image_fr_path: True
+save_visuals_every_n_iter: 4

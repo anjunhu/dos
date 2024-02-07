@@ -61,6 +61,7 @@ class DiffusionForTargetImg:
         select_diffusion_option="sd",
         use_nfsd=False,
         dds=False,
+        save_visuals_every_n_iter=2,
     ):
 
         self.cache_dir = cache_dir
@@ -82,6 +83,7 @@ class DiffusionForTargetImg:
         self.torch_dtype = torch_dtype
         self.select_diffusion_option = select_diffusion_option
         self.use_nfsd = use_nfsd
+        self.save_visuals_every_n_iter = save_visuals_every_n_iter
 
         if self.select_diffusion_option == "df":
             self.df = DeepFloyd(device, cache_dir, torch_dtype=torch_dtype)
@@ -321,7 +323,7 @@ class DiffusionForTargetImg:
                     )
                     optimizer_l2.step()
 
-            if i % 2 == 0:
+            if i % self.save_visuals_every_n_iter == 0:
                 all_imgs.append(pred_rgb.clone().detach())
 
                 if self.select_diffusion_option in ["sd", "sd_XL"]:
@@ -357,7 +359,7 @@ class DiffusionForTargetImg:
         all_imgs_save = all_imgs.copy()
         all_imgs_save = all_imgs_save.clip(0, 1)
         all_imgs_save = (all_imgs_save * 255).round().astype("uint8")
-        file_name = f"{index}_cow-sds_latent-l2_image-600-lr1e-1.jpg"
+        file_name = f"{index}-{self.vis_name}"
         out_path = Path(self.output_dir) / file_name
         out_path.parent.mkdir(exist_ok=True, parents=True)
         Image.fromarray(all_imgs_save).save(out_path)
