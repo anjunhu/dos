@@ -28,8 +28,7 @@ class SpecifyGradient(torch.autograd.Function):
     @custom_bwd
     def backward(ctx, grad):
         gt_grad, = ctx.saved_tensors
-        batch_size = len(gt_grad)
-        return gt_grad / batch_size, None
+        return gt_grad, None
 
 
 def seed_everything(seed):
