@@ -179,8 +179,8 @@ class StableDiffusion(nn.Module):
         # THE OUTPUT IS SPLITTED IN TWO PARTS, ONE FOR CONDITIONED-ON-TEXT AND ANOTHER ONE FOR UNCONDITIONED-ON-TEXT outputs.        
         if use_nfsd:
             noise_pred_uncond, noise_pred_text, noise_pred_ood = noise_pred.chunk(3)
-            if t.item() < 200:
-                noise_pred_ood = 0
+            use_noise_pred_ood = t >= 200
+            noise_pred_ood = noise_pred_ood * use_noise_pred_ood[:, None, None, None]
             grad_unweighted = noise_pred_uncond - noise_pred_ood + guidance_scale * (noise_pred_text - noise_pred_uncond)
         else: # standard SDS
             noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
