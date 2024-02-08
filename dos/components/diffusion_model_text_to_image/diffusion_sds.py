@@ -53,7 +53,7 @@ class DiffusionForTargetImg:
         self,
         cache_dir=None,
         init_image_path=None,
-        output_dir="sd_sds_output",
+        output_dir=None,
         vis_name="cow-sds_latent-l2_image-600-lr1e-1.jpg",
         prompts=["a cow with front leg raised"],
         negative_prompts=[""],
@@ -341,49 +341,51 @@ class DiffusionForTargetImg:
                 pred_rgb = torch.nn.functional.interpolate(
                     pred_rgb, size=input_image.shape[-2:]
                 )
+
         # %%
         # save all images
-        n_images = len(all_imgs)
-        all_imgs = rearrange(torch.stack(all_imgs), "t b c h w -> (b t) c h w")
-        all_imgs = torchvision.utils.make_grid(all_imgs, nrow=n_images, pad_value=1)
+        if self.output_dir is not None:
+            n_images = len(all_imgs)
+            all_imgs = rearrange(torch.stack(all_imgs), "t b c h w -> (b t) c h w")
+            all_imgs = torchvision.utils.make_grid(all_imgs, nrow=n_images, pad_value=1)
 
-        if self.select_diffusion_option in ["sd", "sd_XL"]:
-            all_decoded_imgs = rearrange(
-                torch.stack(all_decoded_imgs), "t b c h w -> (b t) c h w"
-            )
-            all_decoded_imgs = torchvision.utils.make_grid(
-                all_decoded_imgs, nrow=n_images, pad_value=1
-            )
+            if self.select_diffusion_option in ["sd", "sd_XL"]:
+                all_decoded_imgs = rearrange(
+                    torch.stack(all_decoded_imgs), "t b c h w -> (b t) c h w"
+                )
+                all_decoded_imgs = torchvision.utils.make_grid(
+                    all_decoded_imgs, nrow=n_images, pad_value=1
+                )
 
-            # add below
-            # resize all_imgs to be the same size as all_decoded_imgs
-            all_imgs = torch.nn.functional.interpolate(
-                all_imgs[None], size=all_decoded_imgs.shape[-2:]
-            )[0]
+                # add below
+                # resize all_imgs to be the same size as all_decoded_imgs
+                all_imgs = torch.nn.functional.interpolate(
+                    all_imgs[None], size=all_decoded_imgs.shape[-2:]
+                )[0]
 
-            if self.mode in "sds_latent":
-                all_imgs = all_decoded_imgs
-            else:
-                all_imgs = torch.cat([all_imgs, all_decoded_imgs], dim=1)
+                if self.mode in "sds_latent":
+                    all_imgs = all_decoded_imgs
+                else:
+                    all_imgs = torch.cat([all_imgs, all_decoded_imgs], dim=1)
 
-        all_imgs = all_imgs.detach().cpu().permute(1, 2, 0).numpy()
-        # clip to [0, 1]
-        all_imgs_save = all_imgs.copy()
-        all_imgs_save = all_imgs_save.clip(0, 1)
-        all_imgs_save = (all_imgs_save * 255).round().astype("uint8")
-        file_name = f"{index}-{self.vis_name}"
-        out_path = Path(self.output_dir) / file_name
-        out_path.parent.mkdir(exist_ok=True, parents=True)
-        Image.fromarray(all_imgs_save).save(out_path)
+            all_imgs = all_imgs.detach().cpu().permute(1, 2, 0).numpy()
+            # clip to [0, 1]
+            all_imgs_save = all_imgs.copy()
+            all_imgs_save = all_imgs_save.clip(0, 1)
+            all_imgs_save = (all_imgs_save * 255).round().astype("uint8")
+            file_name = f"{index}-{self.vis_name}"
+            out_path = Path(self.output_dir) / file_name
+            out_path.parent.mkdir(exist_ok=True, parents=True)
+            Image.fromarray(all_imgs_save).save(out_path)
 
-        # pred_rgb size is 256x256
-        pred_rgb_PIL = torchvision_F.to_pil_image(pred_rgb[0])
-        pred_rgb_PIL.save(f"{self.output_dir}/{index}_pred_rgb.jpg")
+            # pred_rgb size is 256x256
+            pred_rgb_PIL = torchvision_F.to_pil_image(pred_rgb[0])
+            pred_rgb_PIL.save(f"{self.output_dir}/{index}_pred_rgb.jpg")
 
-        if self.select_diffusion_option in ["sd", "sd_XL"]:
-            # rgb_decoded size is 512x512
-            rgb_decoded_PIL = torchvision_F.to_pil_image(rgb_decoded[0])
-            rgb_decoded_PIL.save(f"{self.output_dir}/{index}_rgb_decoded.jpg")
+            if self.select_diffusion_option in ["sd", "sd_XL"]:
+                # rgb_decoded size is 512x512
+                rgb_decoded_PIL = torchvision_F.to_pil_image(rgb_decoded[0])
+                rgb_decoded_PIL.save(f"{self.output_dir}/{index}_rgb_decoded.jpg")
 
         return pred_rgb
 
