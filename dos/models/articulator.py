@@ -346,7 +346,6 @@ class Articulator(BaseModel):
             texture_features = None
 
         if self.enable_texture_predictor:
-            
             start_time = time.time()
             material = self.texture_predictor
             end_time = time.time()
@@ -406,7 +405,6 @@ class Articulator(BaseModel):
         
             # For Debugging purpose, save all the poses before optimisation
             self.save_all_poses_before_optimisation(pose, renderer_outputs, self.path_to_save_images)
-            
             # GENERATING TARGET IMAGES USING DIFFUSION (SD or DF)
             target_img_rgb = self.diffusion_Text_to_Target_Img.run_experiment(
             input_image = renderer_outputs["image_pred"][i],
@@ -548,29 +546,37 @@ class Articulator(BaseModel):
             
             
     # Saving Rendered Image at every iteration with keypoints visualisation
-    def save_img_each_iteration(self, model_outputs, iteration, index_of_image, path_to_save_images):
+    def save_img_each_iteration(self, model_outputs, iteration, index_of_image, path_to_save_img_per_iteration):
         
         start_time = time.time()
         
         for index, item in enumerate(model_outputs["rendered_image_with_kps"]):
             
-            dir_path = f'{path_to_save_images}/batch_size_{index_of_image}/rendered_img'
+            dir_path = f'{path_to_save_img_per_iteration}/rendered_img_with_kps/{index}_pose'
             os.makedirs(dir_path, exist_ok=True)
-            model_outputs["rendered_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_rendered_image.png', bbox_inches='tight')
+            model_outputs["rendered_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_rendered_img_with_kps.png', bbox_inches='tight')
 
-            dir_path = f'{path_to_save_images}/batch_size_{index_of_image}/target_img'
+            dir_path = f'{path_to_save_img_per_iteration}/rendered_img_NO_kps/{index}_pose'
             os.makedirs(dir_path, exist_ok=True)
-            model_outputs["target_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_target_img.png', bbox_inches='tight')
+            model_outputs["rendered_img_NO_kps"][index].savefig(f'{dir_path}/{iteration}_rendered_img_NO_kps.png', bbox_inches='tight')
+
+            dir_path = f'{path_to_save_img_per_iteration}/target_img_with_kps/{index}_pose'
+            os.makedirs(dir_path, exist_ok=True)
+            model_outputs["target_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_target_img_with_kps.png', bbox_inches='tight')
             
-            dir_path = f'{path_to_save_images}/batch_size_{index_of_image}/cycle_consi'
+            dir_path = f'{path_to_save_img_per_iteration}/target_img_NO_kps/{index}_pose'
+            os.makedirs(dir_path, exist_ok=True)
+            model_outputs["target_img_NO_kps"][index].savefig(f'{dir_path}/{iteration}_target_img_NO_kps.png', bbox_inches='tight')
+            
+            dir_path = f'{path_to_save_img_per_iteration}/cycle_consi/{index}_pose'
             os.makedirs(dir_path, exist_ok=True)
             model_outputs["cycle_consi_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_cycle_consi.png', bbox_inches='tight')
 
-            dir_path = f'{path_to_save_images}/batch_size_{index_of_image}/rendered_image_with_kps_list_after_cyc_check'
+            dir_path = f'{path_to_save_img_per_iteration}/rendered_image_with_kps_list_after_cyc_check/{index}_pose'
             os.makedirs(dir_path, exist_ok=True)
             model_outputs["rendered_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_rendered_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
 
-            dir_path = f'{path_to_save_images}/batch_size_{index_of_image}/target_image_with_kps_list_after_cyc_check'
+            dir_path = f'{path_to_save_img_per_iteration}/target_image_with_kps_list_after_cyc_check/{index}_pose'
             os.makedirs(dir_path, exist_ok=True)
             model_outputs["target_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_target_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
 

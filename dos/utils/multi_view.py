@@ -37,7 +37,7 @@ def view_direction_id_to_text(view_direction_id):
     return [dir_texts[i] for i in view_direction_id]
 
 
-def poses_helper_func(size, device, phis, thetas, radius_range=[1, 1], angle_overhead=30, angle_front=60, phi_offset=0, jitter=False, cam_z_offset=10, return_dirs=True):
+def poses_helper_func(size, device, phis, thetas, radius_range=[1, 1], angle_overhead=30, angle_front=60, phi_offset=0, jitter=False, cam_z_offset=9, return_dirs=True):
     
     angle_overhead = np.deg2rad(angle_overhead)
     
@@ -45,13 +45,16 @@ def poses_helper_func(size, device, phis, thetas, radius_range=[1, 1], angle_ove
     
     radius = torch.rand(size, device=device) * (radius_range[1] - radius_range[0]) + radius_range[0]
 
-    targets = 0
+    targets = torch.zeros(size, 3, device=device)
+    # targets[:, 1] = -0.5   # To adjust Vertical Alignment.  # Didn't work
     
     centers = -torch.stack([
         radius * torch.sin(thetas) * torch.sin(phis),
-        radius * torch.cos(thetas),
+        radius * torch.cos(thetas),     # radius * torch.cos(thetas) *0.5, by adjusting the vertical position, # didn't work
         radius * torch.sin(thetas) * torch.cos(phis),
     ], dim=-1) # [B, 3]
+    
+    print('centers', centers)
     
     # jitters
     if jitter:
@@ -72,7 +75,13 @@ def poses_helper_func(size, device, phis, thetas, radius_range=[1, 1], angle_ove
     
     poses = torch.stack([right_vector, up_vector, forward_vector], dim=-1)
     radius = radius[..., None] - cam_z_offset
-    translations = torch.cat([torch.zeros_like(radius), torch.zeros_like(radius), radius], dim=-1)
+    
+    translations = torch.cat([torch.zeros_like(radius), torch.zeros_like(radius), radius], dim=-1) # Original
+    
+    # translations = torch.cat([centers, -(radius + cam_z_offset).view(-1, 1)], dim=-1) # this doesnt work
+    
+    # translations = torch.cat([centers, (radius - cam_z_offset).view(-1, 1)], dim=1) # this doesnt work
+    
     poses = torch.cat([poses.view(-1, 9), translations], dim=-1)
     
     if return_dirs:
