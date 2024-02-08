@@ -215,11 +215,6 @@ class DiffusionForTargetImg:
         for i in tqdm(range(self.num_inference_steps)):
             # optimizer.zero_grad()
 
-            if self.mode == "sds_image-l2_image":
-                # replace latents tensor value with current encoded image (do not create new var)
-                # latents.data.shape: torch.Size([1, 4, 64, 64])
-                latents.data = image_to_latents(pred_rgb).data
-
             if self.mode == "sds_image":
                 # 'train_step_fn' - training steps are set differently based on the mode.
                 # partial function creates a new func by passing the function and the arguments we want to pre-fill to partial.
@@ -317,6 +312,10 @@ class DiffusionForTargetImg:
                         f"pred_rgb.grad: min={pred_rgb.grad.min().item():.4e}, max={pred_rgb.grad.max().item():.4e}"
                     )
                     optimizer_l2.step()
+
+                    # replace latents tensor value with current encoded image (do not create new var)
+                    # latents.data.shape: torch.Size([1, 4, 64, 64])
+                    latents.data = image_to_latents(pred_rgb).data
 
             if i % self.save_visuals_every_n_iter == 0:
                 all_imgs.append(pred_rgb.clone().detach())
