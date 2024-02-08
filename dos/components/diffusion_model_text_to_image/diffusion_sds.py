@@ -334,6 +334,13 @@ class DiffusionForTargetImg:
                 if self.select_diffusion_option in ["sd", "sd_XL"]:
                     all_decoded_imgs.append(rgb_decoded.clone().detach())
 
+        if self.mode in ["sds_latent", "sds_latent_decenc"]:
+            pred_rgb = sd.decode_latents(latents)
+            if input_image is not None:
+                # resize pred_rgb to be the same size as input_image
+                pred_rgb = torch.nn.functional.interpolate(
+                    pred_rgb, size=input_image.shape[-2:]
+                )
         # %%
         # save all images
         n_images = len(all_imgs)
