@@ -25,14 +25,14 @@ model:
     body_bones_type: z_minmax_y+
     temperature: 0.05
 
-  path_to_save_images: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1422_sd/
-  num_pose: 25
+  path_to_save_images: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1436_sd
+  num_pose: 10
   num_sample_bone_line: 4  # 
   mode_kps_selection: "kps_fr_sample_on_bone_line" # Options are "kps_fr_sample_on_bone_line" OR "kps_fr_sample_farthest_points"
   shape_template_path: /scratch/shared/beegfs/tomj/projects/articulator/data/synth_animals/shape_templates/cow_female-rd/Cow-OBJ-v01/Cow_Highpoly.obj
   enable_texture_predictor: False
   view_option: "multi_view_azimu" # Options are "multi_view_azimu"; "multi_view_rand"; "single_view"
-  debug_mode: False # THIS WILL SWITCH OFF THE LOADING TO FUSE'S STABLE DIFFUSION MODEL
+  debug_mode: True # IN DEBUG MODE, THIS WILL SWITCH OFF THE LOADING TO FUSE'S STABLE DIFFUSION MODEL
   
   articulation_predictor:
     _target_: dos.predictors.articulation_predictor.ArticulationPredictor  # Class Name
@@ -47,7 +47,7 @@ model:
   diffusion_Text_to_Target_Img:  # variable Name
     _target_: dos.components.diffusion_model_text_to_image.diffusion_sds.DiffusionForTargetImg # Class Name
     cache_dir: /work/oishideb/cache/huggingface_hub
-    output_dir: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1422_sd/sd_sds_output/
+    output_dir: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1436_sd/sd_sds_output/
     init_image_path: /users/oishideb/laam/dos/examples/data/cow.png
     vis_name: cow-sds_latent-l2_image-600-lr1e-1.jpg
     # prompts: 'A photograph of a single cow running very fast, back view.' #.The photo should have a grey background.' # DOS-1338  opti multi_view_azimu, GS20, Num_Infe50
@@ -69,7 +69,7 @@ renderer:   # variable Name
   cam_pos_z_offset: 0.0
   fov: 28.84
 
-path_to_save_img_per_iteration: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/
+path_to_save_img_per_iteration: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1436_sd
 checkpoint_root_dir: /work/oishideb/articulation_cow_chkpts
 experiment_name: articulator-dev-0.1
 save_each_iteration: True 
@@ -79,11 +79,11 @@ device: cuda:0
 
 # resume: True
 
-learning_rate: 1e-1  # tried with 0.01, 0.5, 0.9, 1;   # 1e-4
-
+# learning_rate: 1e-9  # tried with 0.01, 0.5, 0.9, 1;   # 1e-4   # DOS_1432
+learning_rate: 1e-6           # DOS_1433
 # for debugging
-num_iterations: 100
-num_vis_iterations: 10
+num_iterations: 150
+num_vis_iterations: 1
 num_eval_iterations: 10
 save_checkpoint_freq: 50
 num_workers: 0
