@@ -28,8 +28,7 @@ class SpecifyGradient(torch.autograd.Function):
     @custom_bwd
     def backward(ctx, grad):
         gt_grad, = ctx.saved_tensors
-        batch_size = len(gt_grad)
-        return gt_grad / batch_size, None
+        return gt_grad, None
 
 
 def seed_everything(seed):
@@ -76,10 +75,8 @@ class StableDiffusion(nn.Module):
         self.alphas = self.scheduler.alphas_cumprod.to(self.device) # for convenience
         
         print(f'[INFO] loaded stable diffusion!')
-
-    def get_text_embeds(self, prompt, negative_prompt):
-        # prompt, negative_prompt: [str]
-
+    
+    def get_text_embeds_for_prompt(self, prompt):
         # Tokenize text and get embeddings
         text_input = self.tokenizer(prompt, padding='max_length', max_length=self.tokenizer.model_max_length, truncation=True, return_tensors='pt')
 
@@ -87,20 +84,29 @@ class StableDiffusion(nn.Module):
             # Shape of "text_input.input_ids" is [1, 77]
             text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
 
-        # Do the same for unconditional embeddings
-        uncond_input = self.tokenizer(negative_prompt, padding='max_length', max_length=self.tokenizer.model_max_length, return_tensors='pt')
+        return text_embeddings
 
-        with torch.no_grad():
-            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
-
+    # TODO: this is the same for all the classes, so it should be moved to a common class
+    def get_text_embeds(self, prompt, negative_prompt, use_nfsd=False):
+        # prompt, negative_prompt: [str]
+        uncond_embeddings = self.get_text_embeds_for_prompt(negative_prompt)
+        text_embeddings = self.get_text_embeds_for_prompt(prompt)
+        if use_nfsd:
+            ood_prompt = "unrealistic, blurry, low quality, out of focus, ugly, low contrast, dull, dark, low-resolution, gloomy"
+            n_prompts = uncond_embeddings.shape[0]
+            ood_prompt = [ood_prompt] * n_prompts
+            ood_embeddings = self.get_text_embeds_for_prompt(ood_prompt)
+            all_embeddings = [uncond_embeddings, text_embeddings, ood_embeddings]
+        else:
+            all_embeddings = [uncond_embeddings, text_embeddings]
         # Cat for final embeddings
-        text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+        text_embeddings = torch.cat(all_embeddings)
         return text_embeddings
 
     # equivalent to UNET_AttentionBlock code in 'pytorch-stable-diffusion' diffusion.py file
     def train_step(
             self, text_embeddings, pred_rgb=None, latents=None, guidance_scale=100, loss_weight=1.0, min_step_pct=0.02, 
-            max_step_pct=0.98, return_aux=False, fixed_step=None, noise_random_seed=None):
+            max_step_pct=0.98, return_aux=False, fixed_step=None, noise_random_seed=None, use_nfsd=False):
         
         text_embeddings = text_embeddings.to(self.torch_dtype)
 
@@ -125,9 +131,12 @@ class StableDiffusion(nn.Module):
             print('fixed_step is None')
             min_step = int(self.num_train_timesteps * min_step_pct)
             max_step = int(self.num_train_timesteps * max_step_pct)
-            t = torch.randint(min_step, max_step + 1, [b], dtype=torch.long, device=self.device)
+            # t = torch.randint(min_step, max_step + 1, [b], dtype=torch.long, device=self.device)
+            # FIXME: make this optional
+            # use the same timestep for all images in the batch
+            t = torch.randint(min_step, max_step + 1, [1], dtype=torch.long, device=self.device)
+            t = torch.cat([t] * b)
         else:
-            print('fixed_step is not None')
             t = torch.zeros([b], dtype=torch.long, device=self.device) + fixed_step
 
 
@@ -139,15 +148,23 @@ class StableDiffusion(nn.Module):
                 torch.manual_seed(noise_random_seed)
                 torch.cuda.manual_seed(noise_random_seed)
             
-            # noise shape [1, 4, 64, 64]
-            noise = torch.randn_like(latents)
+            # FIXME: make this optional
+            # noise shape [1, 4, 64, 64], use the same noise for all images in the batch
+            noise = torch.randn([1] + list(latents.shape[1:]), dtype=latents.dtype, device=latents.device)
             
             # latents_noisy shape [1, 4, 64, 64]
             latents_noisy = self.scheduler.add_noise(latents, noise, t)
             # pred noise
-            latent_model_input = torch.cat([latents_noisy] * 2)
+            if use_nfsd:
+                n_text_embeddings_per_prompt = 3
+            else:
+                n_text_embeddings_per_prompt = 2
+            latent_model_input = torch.cat([latents_noisy] * n_text_embeddings_per_prompt)
             
-            t_input = torch.cat([t, t])
+            t_input = torch.cat([t] * n_text_embeddings_per_prompt)
+
+            # repeat text_embeddings for image in the batch 
+            text_embeddings = torch.repeat_interleave(text_embeddings, b, dim=0)
             
             # text_embeddings shape [2, 77, 768]
             # t_input shape [2]
@@ -160,9 +177,15 @@ class StableDiffusion(nn.Module):
         # perform guidance (high scale from paper!)
         # THIS DOES THE CLASSIFIER-FREE GUIDANCE
         # THE OUTPUT IS SPLITTED IN TWO PARTS, ONE FOR CONDITIONED-ON-TEXT AND ANOTHER ONE FOR UNCONDITIONED-ON-TEXT outputs.        
-        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-        noise_pred = noise_pred_text + guidance_scale * (noise_pred_text - noise_pred_uncond)
-        
+        if use_nfsd:
+            noise_pred_uncond, noise_pred_text, noise_pred_ood = noise_pred.chunk(3)
+            if t.item() < 200:
+                noise_pred_ood = 0
+            grad_unweighted = noise_pred_uncond - noise_pred_ood + guidance_scale * (noise_pred_text - noise_pred_uncond)
+        else: # standard SDS
+            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+            grad_unweighted = (noise_pred - noise)
         
         # w(t), sigma_t^2
         # w is used for scaling the gradient later.
@@ -170,7 +193,6 @@ class StableDiffusion(nn.Module):
         # t is time_step
         w = (1 - self.alphas[t])
         # w = self.alphas[t] ** 0.5 * (1 - self.alphas[t])
-        grad_unweighted = (noise_pred - noise)
         
         # The unweighted gradient is scaled by loss_weight and the weight w (broadcasted to match dimensions). 
         # This scales the gradient according to the model's current state and the importance of the loss.

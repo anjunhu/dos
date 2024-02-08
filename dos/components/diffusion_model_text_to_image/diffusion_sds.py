@@ -1,7 +1,6 @@
 ##------- CODE partly taken from https://github.com/tomasjakab/laam/blob/sds-investigation/dos/examples/diffusion_sds_example.py
 
-import os
-# add dos to path
+import glob
 import sys
 from functools import partial
 from pathlib import Path
@@ -15,11 +14,11 @@ from einops import rearrange
 from PIL import Image
 from tqdm import tqdm
 
+from dos.datasets import ImageLoader
+
 sys.path.append("../../dos")
-import argparse
 
 import torch.optim
-from omegaconf import OmegaConf
 
 from dos.components.diffusion_model_text_to_image.deep_floyd import DeepFloyd
 from dos.components.diffusion_model_text_to_image.sd import (StableDiffusion,
@@ -30,7 +29,19 @@ from dos.components.diffusion_model_text_to_image.sd_XL import \
     StableDiffusionXL
 from dos.utils.framework import read_configs_and_instantiate
 
-schedule = np.array([600] * 50).astype("int32")
+
+def load_images(image_paths, size, device):
+    """
+    creates a batch of images from a list of image paths
+    """
+    images = []
+    for path in image_paths:
+        img = ImageLoader(size)(path)
+        images.append(img)
+    return torch.stack(images).to(device)
+
+
+# TODO: move this inside the class
 device = torch.device("cuda:0")
 optimizer_class = torch.optim.SGD
 torch_dtype = torch.float16
@@ -49,22 +60,24 @@ class DiffusionForTargetImg:
         prompts_source=[],
         mode="sds_latent-l2_image",
         lr=0.1,
+        momentum=0.0,
         lr_l2=1e4,
         seed=2,
         num_inference_steps=20,
         l2_image_period=1,
         guidance_scale=100,
-        schedule=schedule,
+        schedule="[600] * 50",
         optimizer_class=optimizer_class,
         torch_dtype=torch_dtype,
         image_fr_path=False,
         select_diffusion_option="sd",
+        use_nfsd=False,
         dds=False,
+        save_visuals_every_n_iter=2,
     ):
 
         self.cache_dir = cache_dir
         self.output_dir = output_dir
-        self.init_image_path = init_image_path
         self.vis_name = vis_name
         self.prompts_source = prompts_source
         self.negative_prompts = negative_prompts
@@ -72,14 +85,26 @@ class DiffusionForTargetImg:
         self.mode = mode
         self.optimizer_class = optimizer_class
         self.lr = lr
+        self.momentum = momentum
         self.lr_l2 = lr_l2
         self.seed = seed
         self.num_inference_steps = num_inference_steps
         self.l2_image_period = l2_image_period
         self.guidance_scale = guidance_scale
+        
+        if isinstance(schedule, str):
+            schedule = np.array(eval(schedule)).astype("int32")
         self.schedule = schedule
+
         self.torch_dtype = torch_dtype
         self.select_diffusion_option = select_diffusion_option
+        self.use_nfsd = use_nfsd
+        self.save_visuals_every_n_iter = save_visuals_every_n_iter
+
+        if init_image_path is not None:
+            if isinstance(init_image_path, str):
+                init_image_path = glob.glob(init_image_path)
+        self.init_image_path = init_image_path
 
         if self.select_diffusion_option == "df":
             self.df = DeepFloyd(device, cache_dir, torch_dtype=torch_dtype)
@@ -111,7 +136,7 @@ class DiffusionForTargetImg:
             # Uses pre-trained CLIP Embeddings; # Prompts -> text embeds
             # SHAPE OF text_embeddings [2, 77, 768]
             text_embeddings = self.sd.get_text_embeds(
-                self.prompts, self.negative_prompts
+                self.prompts, self.negative_prompts, use_nfsd=self.use_nfsd
             )
         elif self.select_diffusion_option == "sd_XL":
             text_embeddings = self.sd_XL.get_text_embeds(
@@ -122,40 +147,21 @@ class DiffusionForTargetImg:
                 self.prompts_source, self.negative_prompts, self.prompts
             )
 
-        # init img
-        height, width = 256, 256
+        # FIXME: this is 64 for deepfloyd
+        encoder_image_size = 1024 if self.select_diffusion_option == "sd_XL" else 512
 
         if self.image_fr_path == True:
             if self.init_image_path is not None:
-                # load image -- source img
-                img = Image.open(self.init_image_path).convert("RGB")
-                img = img.resize((width, height), Image.LANCZOS)
-                img = torchvision.transforms.ToTensor()(
-                    img
-                )  # shape is torch.Size([3, 256, 256])
-                # img[None]: This operation adds an additional dimension to the tensor, effectively reshaping it from [C,H,W] to [1,C,H,W].
-                # In Python, None is used to add a new axis.
-                # The 1, 1, 1 arguments indicate that the image should not be repeated along the channel, height, or width dimensions.
-                # text_embeddings.shape[0] // 2: This divides the size of the first dimension by 2, using integer division.
-
-                # repeat(...): The repeat function is used to replicate the tensor along specified dimensions.
-                # The arguments inside the repeat function indicate how many times to repeat the tensor along each dimension.
-
-                # .repeat(text_embeddings.shape[0] // 2, 1, 1, 1) takes this single-item batch and repeats it.
-                # The image is not repeated across the color channels, height, or width dimensions (1, 1, 1) but is repeated text_embeddings.shape[0] // 2 times along the batch dimension.
-                # This creates a batch of images where each image in the batch is identical.
-                
+                img = load_images(self.init_image_path, encoder_image_size, device)
                 # prompts can be a list of string or a single string
                 n_prompts = 1 if isinstance(self.prompts, str) else len(self.prompts)
-                img = img[None].repeat(
-                    n_prompts, 1, 1, 1
-                )  # shape is torch.Size([1, 3, 256, 256])
+                img = img.repeat(n_prompts, 1, 1, 1)
                 pred_rgb = img
             else:
-                pred_rgb = torch.zeros((len(self.prompts), 3, height, width))
-
+                pred_rgb = torch.zeros(
+                    (len(self.prompts), 3, encoder_image_size, encoder_image_size)
+                )
         else:
-
             if self.dds:
                 pred_rgb = self.sd_dds_loss.load_512(input_image)
                 pred_rgb = (
@@ -170,10 +176,6 @@ class DiffusionForTargetImg:
         pred_rgb = pred_rgb.to(device).detach().clone().requires_grad_(True)
 
         def image_to_latents(pred_rgb):
-            # interp to 512x512 to be fed into vae.
-            encoder_image_size = (
-                1024 if self.select_diffusion_option == "sd_XL" else 512
-            )
             pred_rgb_512 = F.interpolate(
                 pred_rgb,
                 (encoder_image_size, encoder_image_size),
@@ -202,7 +204,7 @@ class DiffusionForTargetImg:
         else:
             raise ValueError(f"Unknown mode: {self.mode}")
 
-        optimizer = self.optimizer_class([param], lr=self.lr)
+        optimizer = self.optimizer_class([param], lr=self.lr, momentum=self.momentum)
 
         #
         if self.mode == "sds_latent-l2_image":
@@ -215,11 +217,6 @@ class DiffusionForTargetImg:
         # optimize
         for i in tqdm(range(self.num_inference_steps)):
             # optimizer.zero_grad()
-
-            if self.mode == "sds_image-l2_image":
-                # replace latents tensor value with current encoded image (do not create new var)
-                # latents.data.shape: torch.Size([1, 4, 64, 64])
-                latents.data = image_to_latents(pred_rgb).data
 
             if self.mode == "sds_image":
                 # 'train_step_fn' - training steps are set differently based on the mode.
@@ -271,8 +268,9 @@ class DiffusionForTargetImg:
                     guidance_scale=self.guidance_scale,
                     fixed_step=self.schedule[i],
                     return_aux=True,
+                    use_nfsd=self.use_nfsd,
                 )
-                if self.mode == 'sds_image':
+                if self.mode == "sds_image":
                     latents = aux["latents"]
                 latents.retain_grad()
                 loss.backward()
@@ -304,7 +302,7 @@ class DiffusionForTargetImg:
 
                     rgb_decoded_ = F.interpolate(
                         rgb_decoded.detach().to(pred_rgb.dtype),
-                        (height, width),
+                        (encoder_image_size, encoder_image_size),
                         mode="bilinear",
                         align_corners=False,
                     )
@@ -318,7 +316,11 @@ class DiffusionForTargetImg:
                     )
                     optimizer_l2.step()
 
-            if i % 2 == 0:
+                    # replace latents tensor value with current encoded image (do not create new var)
+                    # latents.data.shape: torch.Size([1, 4, 64, 64])
+                    latents.data = image_to_latents(pred_rgb).data
+
+            if i % self.save_visuals_every_n_iter == 0:
                 all_imgs.append(pred_rgb.clone().detach())
 
                 if self.select_diffusion_option in ["sd", "sd_XL"]:
@@ -354,7 +356,7 @@ class DiffusionForTargetImg:
         all_imgs_save = all_imgs.copy()
         all_imgs_save = all_imgs_save.clip(0, 1)
         all_imgs_save = (all_imgs_save * 255).round().astype("uint8")
-        file_name = f"{index}_cow-sds_latent-l2_image-600-lr1e-1.jpg"
+        file_name = f"{index}-{self.vis_name}"
         out_path = Path(self.output_dir) / file_name
         out_path.parent.mkdir(exist_ok=True, parents=True)
         Image.fromarray(all_imgs_save).save(out_path)
