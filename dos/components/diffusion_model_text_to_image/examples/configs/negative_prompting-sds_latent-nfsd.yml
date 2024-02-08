@@ -6,7 +6,7 @@ output_dir: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/outp
 # init_image_path: [/scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-front-1.png, /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-side-1.png, /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-back-1.png]
 init_image_path: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-*.png
 # init_image_path: /scratch/shared/beegfs/tomj/dos/articulator/sds_exploration/cow/inputs/cow-side-1.png
-vis_name: cow-batch-sds_latent-600-lr2e-1-2np-mom0.2.jpg
+vis_name: cow-batch-sds_latent-nfsd-600-lr1e-1-2np-mom0.2.jpg
 prompts: "a photograph of a single cow running very fast, back view, back view"
 negative_prompts: "front view, side view, front view, side view"
 mode: sds_latent
@@ -14,7 +14,8 @@ lr: 0.1
 momentum: 0.2
 seed: 2
 num_inference_steps: 50
-guidance_scale: 20
+guidance_scale: 10
 image_fr_path: True
 save_visuals_every_n_iter: 4
 schedule: "[600] * 50"
+use_nfsd: True
