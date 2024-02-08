@@ -192,10 +192,14 @@ class StableDiffusionXL(nn.Module):
         return_aux=False,
         fixed_step=None,
         noise_random_seed=None,
+        use_nfsd=False,
     ):
         """
         Based on https://github.com/fudan-zvg/PGC-3D/blob/main/guidance/sdxl.py
         """
+
+        if use_nfsd:
+            raise NotImplementedError("NFSD not implemented")
 
         text_embeddings = [x.to(self.torch_dtype) for x in text_embeddings]
         (
