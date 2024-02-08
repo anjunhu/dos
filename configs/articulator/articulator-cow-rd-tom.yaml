@@ -56,7 +56,7 @@ model:
     prompts_source: '' #.The photo should have a grey background.' # DOS-1339  opti multi_view_azimu, GS20, Num_Infe50
     negative_prompts: 'front view, side view, tail' #  , cartoon, dead, shadow, reflection'     # the string shouldn't be in a square brackets ['']
     prompts: 'A photograph of a cow running very fast, back view. All four legs should be visible. No cow tail'
-    mode: sds_latent-l2_image # Options are sds_image OR sds_latent-l2_image #
+    mode: sds_latent # Options are sds_image OR sds_latent-l2_image #
     lr: 0.1  # For DeepFloyd
     lr_l2: 1e4  # For SD+SDS
     seed: 2
