@@ -127,6 +127,8 @@ class DiffusionForTargetImg:
         seed_everything(self.seed)
 
     def run_experiment(self, input_image, image_fr_path=False, index=0):
+        if input_image is not None:
+            assert len(input_image.shape) == 4, "input_image should be a batch of images"
 
         if self.select_diffusion_option == "df":
             text_embeddings = self.df.get_text_embeds(
@@ -162,6 +164,13 @@ class DiffusionForTargetImg:
                     (len(self.prompts), 3, encoder_image_size, encoder_image_size)
                 )
         else:
+            # resize to the encoder input image size
+            input_image = F.interpolate(
+                input_image,
+                (encoder_image_size, encoder_image_size),
+                mode="bilinear",
+                align_corners=False,
+            )
             if self.dds:
                 pred_rgb = self.sd_dds_loss.load_512(input_image)
                 pred_rgb = (
@@ -169,8 +178,7 @@ class DiffusionForTargetImg:
                 )
                 pred_rgb = pred_rgb.unsqueeze(0).to(device)
             else:
-                img = input_image
-                img = img[None].repeat(text_embeddings.shape[0] // 2, 1, 1, 1)
+                img = input_image.repeat(text_embeddings.shape[0] // 2, 1, 1, 1)
                 pred_rgb = img
 
         pred_rgb = pred_rgb.to(device).detach().clone().requires_grad_(True)

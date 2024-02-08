@@ -424,7 +424,7 @@ class Articulator(BaseModel):
             self.save_all_poses_before_optimisation(pose, renderer_outputs, self.path_to_save_images)
             # GENERATING TARGET IMAGES USING DIFFUSION (SD or DF)
             target_img_rgb = self.diffusion_Text_to_Target_Img.run_experiment(
-            input_image = renderer_outputs["image_pred"][i],
+            input_image = renderer_outputs["image_pred"][i][None],
             image_fr_path = False,
             index=i
             )
@@ -444,7 +444,7 @@ class Articulator(BaseModel):
             # all_generated_target_img["target_img_NO_kps"] = target_img_rgb
             
              # Inserts the new image into the final tensor
-            all_generated_target_img[i] = target_img_rgb
+            all_generated_target_img[i] = target_img_rgb.squeeze(0)
         
         
         print('all_generated_target_img.shape', all_generated_target_img.shape)
