@@ -30,3 +30,20 @@ def get_visible_vertices(mesh, mvp, resolution):
     res = torch.stack(res, dim=0)
 
     return res
+
+
+def fit_inside_unit_cube(mesh):
+    """
+    Scales and fits the mesh inside the unit cube
+    """
+    min_extents = mesh.v_pos.min(dim=1).values
+    max_extents = mesh.v_pos.max(dim=1).values
+    scale = 1.0 / (max_extents - min_extents).max()
+    mesh.v_pos = mesh.v_pos * scale
+    # now translate to the center
+    min_extents = mesh.v_pos.min(dim=1).values
+    max_extents = mesh.v_pos.max(dim=1).values
+    center = (max_extents + min_extents) / 2
+    mesh.v_pos = mesh.v_pos - center
+    return mesh
+

@@ -1,6 +1,8 @@
+import random
+
 import numpy as np
 import torch
-import random
+
 
 # ADDED FOR MULTI-VIEW/3D
 def safe_normalize(x, eps=1e-20):
@@ -37,7 +39,7 @@ def view_direction_id_to_text(view_direction_id):
     return [dir_texts[i] for i in view_direction_id]
 
 
-def poses_helper_func(size, device, phis, thetas, radius_range=[1, 1], angle_overhead=30, angle_front=60, phi_offset=0, jitter=False, cam_z_offset=9, return_dirs=True):
+def poses_helper_func(size, device, phis, thetas, radius_range=[2.5, 2.5], angle_overhead=30, angle_front=60, phi_offset=0, jitter=False, cam_z_offset=0, return_dirs=True):
     
     angle_overhead = np.deg2rad(angle_overhead)
     
@@ -46,12 +48,11 @@ def poses_helper_func(size, device, phis, thetas, radius_range=[1, 1], angle_ove
     radius = torch.rand(size, device=device) * (radius_range[1] - radius_range[0]) + radius_range[0]
 
     targets = torch.zeros(size, 3, device=device)
-    # targets[:, 1] = -0.5   # To adjust Vertical Alignment.  # Didn't work
     
     centers = -torch.stack([
-        radius * torch.sin(thetas) * torch.sin(phis),
-        radius * torch.cos(thetas),     # radius * torch.cos(thetas) *0.5, by adjusting the vertical position, # didn't work
-        radius * torch.sin(thetas) * torch.cos(phis),
+        torch.sin(thetas) * torch.sin(phis),
+        torch.cos(thetas),
+        torch.sin(thetas) * torch.cos(phis),
     ], dim=-1) # [B, 3]
     
     print('centers', centers)
@@ -74,13 +75,10 @@ def poses_helper_func(size, device, phis, thetas, radius_range=[1, 1], angle_ove
     up_vector = safe_normalize(torch.cross(forward_vector, right_vector, dim=-1) + up_noise)
     
     poses = torch.stack([right_vector, up_vector, forward_vector], dim=-1)
+    
     radius = radius[..., None] - cam_z_offset
     
-    translations = torch.cat([torch.zeros_like(radius), torch.zeros_like(radius), radius], dim=-1) # Original
-    
-    # translations = torch.cat([centers, -(radius + cam_z_offset).view(-1, 1)], dim=-1) # this doesnt work
-    
-    # translations = torch.cat([centers, (radius - cam_z_offset).view(-1, 1)], dim=1) # this doesnt work
+    translations = torch.cat([torch.zeros_like(radius), torch.zeros_like(radius), -radius], dim=-1) 
     
     poses = torch.cat([poses.view(-1, 9), translations], dim=-1)
     
@@ -92,7 +90,7 @@ def poses_helper_func(size, device, phis, thetas, radius_range=[1, 1], angle_ove
     
     return poses, dirs
 
-def poses_along_azimuth(size, device, theta=90, phi_range=[0, 360]):
+def poses_along_azimuth(size, device, radius=2.5, theta=90, phi_range=[0, 360]):
     ''' generate random poses from an orbit camera along uniformly distributed azimuth and fixed elevation
     Args:
         size: batch size of generated poses.
@@ -114,11 +112,11 @@ def poses_along_azimuth(size, device, theta=90, phi_range=[0, 360]):
     
     # targets = torch.zeros(size, 3, device=device)
     
-    poses, dirs = poses_helper_func(size, device, phis, thetas)
+    poses, dirs = poses_helper_func(size, device, phis, thetas, radius_range=[radius, radius])
     
     return poses, dirs
 
-def rand_poses(size, device, theta_range=[0, 120], phi_range=[0, 360], uniform_sphere_rate=0.5):
+def rand_poses(size, device, theta_range=[0, 120], phi_range=[0, 360], uniform_sphere_rate=0.5, radius_range=[2.5, 2.5]):
     ''' generate random poses from an orbit camera
     Args:
         size: batch size of generated poses.
@@ -146,6 +144,6 @@ def rand_poses(size, device, theta_range=[0, 120], phi_range=[0, 360], uniform_s
     else:
         thetas = torch.rand(size, device=device) * (theta_range[1] - theta_range[0]) + theta_range[0]
     
-    poses, dirs = poses_helper_func(size, device, phis, thetas)
+    poses, dirs = poses_helper_func(size, device, phis, thetas, radius_range=radius_range)
     
     return poses, dirs

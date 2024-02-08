@@ -1,32 +1,41 @@
 import random
+
 random.seed(42)
 import os
 # # Set TORCH_HOME to a custom directory
 # os.environ['TORCH_HOME'] = '/work/oishideb/cache/torch_hub'
 import time
 import timeit
-import torch
+
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
+import torch
+import torch.nn.functional as nn_functional
+import torchvision.transforms.functional as F
+from PIL import Image, ImageDraw
+
+from dos.components.fuse.compute_correspond import \
+    ComputeCorrespond  # compute_correspondences_sd_dino
+from dos.components.fuse.extractor_sd import load_model
+from dos.utils.correspondence import (draw_correspondences_1_image,
+                                      padding_tensor, resize,
+                                      tensor_to_matplotlib_figure)
+
+from ..components.diffusion_model_text_to_image.diffusion_sds import \
+    DiffusionForTargetImg
 from ..components.skinning.bones_estimation import BonesEstimator
 from ..components.skinning.skinning import mesh_skinning
 from ..modules.renderer import Renderer
 from ..nvdiffrec.render.mesh import load_mesh
-from ..predictors.texture import TexturePredictor
 from ..predictors.articulation_predictor import ArticulationPredictor
+from ..predictors.texture import TexturePredictor
 from ..utils import geometry as geometry_utils
 from ..utils import mesh as mesh_utils
+from ..utils import multi_view, utils
 from ..utils import visuals as visuals_utils
 from .base import BaseModel
-from PIL import Image, ImageDraw
-import torchvision.transforms.functional as F
-import torch.nn.functional as nn_functional
-import matplotlib.pyplot as plt
-from ..utils import utils, multi_view
-from dos.components.fuse.compute_correspond import ComputeCorrespond #compute_correspondences_sd_dino
-from dos.utils.correspondence import resize, draw_correspondences_1_image, padding_tensor, tensor_to_matplotlib_figure
-from ..components.diffusion_model_text_to_image.diffusion_sds import DiffusionForTargetImg
-from dos.components.fuse.extractor_sd import load_model
+
 
 class Articulator(BaseModel):
     """
@@ -47,9 +56,12 @@ class Articulator(BaseModel):
         articulation_predictor=None,
         renderer=None,
         shape_template_path=None,
+        fit_shape_template_inside_unit_cube=False,
         diffusion_Text_to_Target_Img=None,
         device = "cuda",
+        # TODO: Create a view sampler class to encapsulate the view sampling logic and settings
         view_option = "multi_view_azimu",
+        random_camera_radius=[2.5, 2.5],
         debug_mode = True,
     ):
         super().__init__()
@@ -70,7 +82,7 @@ class Articulator(BaseModel):
         self.renderer = renderer if renderer is not None else Renderer()
 
         if shape_template_path is not None:
-            self.shape_template = self._load_shape_template(shape_template_path)
+            self.shape_template = self._load_shape_template(shape_template_path, fit_inside_unit_cube=fit_shape_template_inside_unit_cube)
         else:
             self.shape_template = None
         
@@ -81,6 +93,7 @@ class Articulator(BaseModel):
         self.correspond = ComputeCorrespond()
         
         self.view_option = view_option 
+        self.random_camera_radius = random_camera_radius
         
         self.cycle_check_img_save = False
         
@@ -104,8 +117,12 @@ class Articulator(BaseModel):
             print(f"The Fuse model loading took {end_time - start_time} seconds to run.\n")
 
 
-    def _load_shape_template(self, shape_template_path):
-        return load_mesh(shape_template_path)
+    def _load_shape_template(self, shape_template_path, fit_inside_unit_cube=False):
+        mesh = load_mesh(shape_template_path)
+        # position the mesh inside the unit cube
+        if fit_inside_unit_cube:
+            mesh = mesh_utils.fit_inside_unit_cube(mesh)
+        return mesh
 
     def compute_correspondences(
         self, articulated_mesh, pose, renderer, bones, rendered_mask, rendered_image, target_image
@@ -365,10 +382,10 @@ class Articulator(BaseModel):
             elif self.view_option == "multi_view_rand":
                 # For Multi View
                 # pose shape is [num_pose, 12]
-                pose, _ = multi_view.rand_poses(self.num_pose, device=self.device)
+                pose, _ = multi_view.rand_poses(self.num_pose, self.device, radius_range=self.random_camera_radius)
                 
             elif self.view_option == "multi_view_azimu":
-                pose, _ = multi_view.poses_along_azimuth(self.num_pose, device=self.device)
+                pose, _ = multi_view.poses_along_azimuth(self.num_pose, self.device, radius=self.random_camera_radius)
         else:
             pose=batch["pose"]
         
@@ -387,7 +404,7 @@ class Articulator(BaseModel):
             # CHANGED IT
             # background=background,
         )
-        
+
         end_time = time.time()  # Record the end time
         # with open('log.txt', 'a') as file:
         #     file.write(f"The 'renderer' took {end_time - start_time} seconds to run.\n")
