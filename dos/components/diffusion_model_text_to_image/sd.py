@@ -131,9 +131,12 @@ class StableDiffusion(nn.Module):
             print('fixed_step is None')
             min_step = int(self.num_train_timesteps * min_step_pct)
             max_step = int(self.num_train_timesteps * max_step_pct)
-            t = torch.randint(min_step, max_step + 1, [b], dtype=torch.long, device=self.device)
+            # t = torch.randint(min_step, max_step + 1, [b], dtype=torch.long, device=self.device)
+            # FIXME: make this optional
+            # use the same timestep for all images in the batch
+            t = torch.randint(min_step, max_step + 1, [1], dtype=torch.long, device=self.device)
+            t = torch.cat([t] * b)
         else:
-            print('fixed_step is not None')
             t = torch.zeros([b], dtype=torch.long, device=self.device) + fixed_step
 
 
@@ -145,16 +148,23 @@ class StableDiffusion(nn.Module):
                 torch.manual_seed(noise_random_seed)
                 torch.cuda.manual_seed(noise_random_seed)
             
-            # noise shape [1, 4, 64, 64]
-            noise = torch.randn_like(latents)
+            # FIXME: make this optional
+            # noise shape [1, 4, 64, 64], use the same noise for all images in the batch
+            noise = torch.randn([1] + list(latents.shape[1:]), dtype=latents.dtype, device=latents.device)
             
             # latents_noisy shape [1, 4, 64, 64]
             latents_noisy = self.scheduler.add_noise(latents, noise, t)
             # pred noise
-            n_text_embeddings_per_prompt = text_embeddings.shape[0] // b
+            if use_nfsd:
+                n_text_embeddings_per_prompt = 3
+            else:
+                n_text_embeddings_per_prompt = 2
             latent_model_input = torch.cat([latents_noisy] * n_text_embeddings_per_prompt)
             
             t_input = torch.cat([t] * n_text_embeddings_per_prompt)
+
+            # repeat text_embeddings for image in the batch 
+            text_embeddings = torch.repeat_interleave(text_embeddings, b, dim=0)
             
             # text_embeddings shape [2, 77, 768]
             # t_input shape [2]
