@@ -91,7 +91,7 @@ class DiffusionForTargetImg:
         self.num_inference_steps = num_inference_steps
         self.l2_image_period = l2_image_period
         self.guidance_scale = guidance_scale
-        
+
         if isinstance(schedule, str):
             schedule = np.array(eval(schedule)).astype("int32")
         self.schedule = schedule
@@ -194,7 +194,7 @@ class DiffusionForTargetImg:
 
         if self.mode == "sds_image":
             param = pred_rgb
-        elif self.mode in ["sds_latent", "sds_latent-l2_image"]:
+        elif self.mode in ["sds_latent", "sds_latent_decenc", "sds_latent-l2_image"]:
             # # random init latents with normal distribution (same size as latents)
             # latents = torch.randn_like(latents)
             # latents shape torch.Size([1, 4, 64, 64])
@@ -233,7 +233,11 @@ class DiffusionForTargetImg:
                         self.sd_dds_loss.train_step, pred_rgb=pred_rgb
                     )
 
-            elif self.mode in ["sds_latent", "sds_latent-l2_image"]:
+            elif self.mode in [
+                "sds_latent",
+                "sds_latent_decenc",
+                "sds_latent-l2_image",
+            ]:
                 if self.select_diffusion_option == "df":
                     train_step_fn = partial(self.df.train_step, latents=latents)
                 elif self.select_diffusion_option in ["sd"]:
@@ -289,12 +293,16 @@ class DiffusionForTargetImg:
                 # Decoding the Latent to image space for Stable Diffusion
                 # TODO: use the same variable name for all the models
                 sd = self.sd if self.select_diffusion_option == "sd" else self.sd_XL
+                # TODO: add option to decode only the last image if the mode is sds_latent - get speed up
                 rgb_decoded = sd.decode_latents(latents)
                 print(
                     f"rgb_decoded: min={rgb_decoded.min().item():.4f}, max={rgb_decoded.max().item():.4f}"
                 )
                 optimizer.step()
                 latents.grad = None
+
+                if self.mode == "sds_latent_decenc":
+                    latents.data = image_to_latents(rgb_decoded).data
 
                 # optimize pred_rgb to be close to rgb_decoded
                 if self.mode == "sds_latent-l2_image" and i % self.l2_image_period == 0:
@@ -346,7 +354,7 @@ class DiffusionForTargetImg:
                 all_imgs[None], size=all_decoded_imgs.shape[-2:]
             )[0]
 
-            if self.mode == "sds_latent":
+            if self.mode in "sds_latent":
                 all_imgs = all_decoded_imgs
             else:
                 all_imgs = torch.cat([all_imgs, all_decoded_imgs], dim=1)
