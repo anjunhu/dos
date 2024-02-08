@@ -58,7 +58,7 @@ class DiffusionForTargetImg:
         prompts=["a cow with front leg raised"],
         negative_prompts=[""],
         prompts_source=[],
-        mode="sds_latent-l2_image",
+        mode="sds_latent",
         lr=0.1,
         momentum=0.0,
         lr_l2=1e4,
