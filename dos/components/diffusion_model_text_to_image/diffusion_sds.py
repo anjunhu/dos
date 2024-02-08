@@ -42,9 +42,6 @@ def load_images(image_paths, size, device):
 
 
 # TODO: move this inside the class
-schedule = np.array([600] * 50).astype("int32")
-# randomly sample schedule from 20 to 600
-# schedule = np.random.randint(20, 600, 50).astype("int32")
 device = torch.device("cuda:0")
 optimizer_class = torch.optim.SGD
 torch_dtype = torch.float16
@@ -63,12 +60,13 @@ class DiffusionForTargetImg:
         prompts_source=[],
         mode="sds_latent-l2_image",
         lr=0.1,
+        momentum=0.0,
         lr_l2=1e4,
         seed=2,
         num_inference_steps=20,
         l2_image_period=1,
         guidance_scale=100,
-        schedule=schedule,
+        schedule="[600] * 50",
         optimizer_class=optimizer_class,
         torch_dtype=torch_dtype,
         image_fr_path=False,
@@ -93,7 +91,11 @@ class DiffusionForTargetImg:
         self.num_inference_steps = num_inference_steps
         self.l2_image_period = l2_image_period
         self.guidance_scale = guidance_scale
+        
+        if isinstance(schedule, str):
+            schedule = np.array(eval(schedule)).astype("int32")
         self.schedule = schedule
+
         self.torch_dtype = torch_dtype
         self.select_diffusion_option = select_diffusion_option
         self.use_nfsd = use_nfsd
