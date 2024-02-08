@@ -87,6 +87,7 @@ class DiffusionForTargetImg:
         self.mode = mode
         self.optimizer_class = optimizer_class
         self.lr = lr
+        self.momentum = momentum
         self.lr_l2 = lr_l2
         self.seed = seed
         self.num_inference_steps = num_inference_steps
@@ -201,7 +202,7 @@ class DiffusionForTargetImg:
         else:
             raise ValueError(f"Unknown mode: {self.mode}")
 
-        optimizer = self.optimizer_class([param], lr=self.lr)
+        optimizer = self.optimizer_class([param], lr=self.lr, momentum=self.momentum)
 
         #
         if self.mode == "sds_latent-l2_image":
