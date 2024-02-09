@@ -105,8 +105,8 @@ def poses_along_azimuth(size, device, radius=2.5, theta=90, phi_range=[0, 360]):
     phi_range = np.deg2rad(phi_range)
     
     # For azimuth rotation (phi), we will create a sequence of values within the specified range
-    phis = torch.linspace(phi_range[0], phi_range[1], steps=size, device=device)
-    
+    # Do not include endpoint (as in np.linspace) to avoid duplicate values
+    phis = torch.linspace(phi_range[0], phi_range[1], steps=size+1, device=device)[:size]
     # Keeping theta (elevation angle) constant
     thetas = torch.full((size,), theta, device=device)
     
