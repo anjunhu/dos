@@ -25,7 +25,7 @@ model:
     body_bones_type: z_minmax_y+
     temperature: 0.05
 
-  path_to_save_images: /scratch/shared/beegfs/dos/articulator/cow
+  path_to_save_images: /scratch/shared/beegfs/tomj/dos/articulator/cow
   num_pose: 10
   num_sample_bone_line: 4  # 
   mode_kps_selection: "kps_fr_sample_on_bone_line" # Options are "kps_fr_sample_on_bone_line" OR "kps_fr_sample_farthest_points"
@@ -34,7 +34,7 @@ model:
   enable_texture_predictor: False
   view_option: "multi_view_azimu" # Options are "multi_view_azimu"; "multi_view_rand"; "single_view"
   random_camera_radius: 2.5
-  debug_mode: True # IN DEBUG MODE, THIS WILL SWITCH OFF THE LOADING TO FUSE'S STABLE DIFFUSION MODEL
+  debug_mode: False # IN DEBUG MODE, THIS WILL SWITCH OFF THE LOADING TO FUSE'S STABLE DIFFUSION MODEL
   
   articulation_predictor:
     _target_: dos.predictors.articulation_predictor.ArticulationPredictor  # Class Name
@@ -59,25 +59,27 @@ model:
     mode: sds_latent # Options are sds_image OR sds_latent-l2_image #
     lr: 0.1  # For DeepFloyd
     lr_l2: 1e4  # For SD+SDS
-    seed: 2
-    num_inference_steps: 50
-    guidance_scale: 20
+    # seed: 2
+    num_inference_steps: 8 # FIXME: 50
+    guidance_scale: 100
     dds: False
     select_diffusion_option: 'sd' # Options are sd, sd_XL, df, sd_dds_loss  # by default is sds loss
     image_fr_path: False
+    save_visuals_every_n_iter: 2
+    schedule: "[600] * 50"
   
 #path_to_save_horse_img: /users/oishideb/dos_output_files/horse/15_Sept
-path_to_save_img_per_iteration: /scratch/shared/beegfs/dos/articulator/cow/all_iteration_Train
-checkpoint_root_dir: /scratch/shared/beegfs/dos/articulator/cow/checkpoints
+path_to_save_img_per_iteration: /scratch/shared/beegfs/tomj/dos/articulator/cow/all_iteration_Train
+checkpoint_root_dir: /scratch/shared/beegfs/tomj/dos/articulator/cow/checkpoints
 experiment_name: articulator-dev-0.1
-save_each_iteration: True 
+save_each_iteration: False 
 evaluate_the_model: False
 
 device: cuda:0
 
 # resume: True
 
-learning_rate: 1e-6
+learning_rate: 0.1
 
 # for debugging
 num_iterations: 150
@@ -86,3 +88,4 @@ num_eval_iterations: 10
 save_checkpoint_freq: 50
 num_workers: 0
 batch_size: 1
+num_log_iterations: 1

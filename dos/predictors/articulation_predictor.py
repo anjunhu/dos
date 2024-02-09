@@ -1,8 +1,10 @@
-import torch.nn as nn
-import torch
-import random
-import numpy as np
 import math
+import random
+
+import numpy as np
+import torch
+import torch.nn as nn
+
 
 class ArticulationPredictor(nn.Module):
     
@@ -15,6 +17,7 @@ class ArticulationPredictor(nn.Module):
         # Each bone_rotation is a 3D vector, 3 corresponds to x, y z coordinates
         # Using nn.Embedding to act as a lookup table
         self.bones_rotations = nn.Embedding(size_dataset, num_bones * 3) # Shape is torch.Size([49, 60]) 
+        self.bones_rotations.weight.data *= 0.0
         
         # Initialize the embedding weights to zeros
         # self.bones_rotations.weight.data.zero_()

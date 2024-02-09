@@ -62,7 +62,7 @@ class DiffusionForTargetImg:
         lr=0.1,
         momentum=0.0,
         lr_l2=1e4,
-        seed=2,
+        seed=None,
         num_inference_steps=20,
         l2_image_period=1,
         guidance_scale=100,
@@ -124,7 +124,8 @@ class DiffusionForTargetImg:
         self.image_fr_path = image_fr_path
         self.dds = dds
 
-        seed_everything(self.seed)
+        if self.seed is not None:
+            seed_everything(self.seed)
 
     def run_experiment(self, input_image, image_fr_path=False, index=0):
         if input_image is not None:
