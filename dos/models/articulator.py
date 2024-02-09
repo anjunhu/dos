@@ -297,7 +297,8 @@ class Articulator(BaseModel):
         }        
         
         # ## Saving multiple random poses with and without keypoints visualisation
-        self.save_multiple_random_poses(output_dict, self.path_to_save_images)
+        # FIXME: save_multiple_random_poses is not working
+        # self.save_multiple_random_poses(output_dict, self.path_to_save_images)
         
         return output_dict
 
