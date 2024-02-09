@@ -179,36 +179,37 @@ class Articulator(BaseModel):
         kps_img_resolu_list = []
         corres_target_kps_list = []
         
+        rendered_images_resized_840 = nn_functional.interpolate(rendered_image, size=(840, 840))
+        target_images_resized_840 = nn_functional.interpolate(target_image, size=(840, 840))
+
         # kps_img_resolu shape is [20, 40, 2], [num_pose, num_kps, xy_coordinates]
-        
         for index, kps_1_batch in enumerate(kps_img_resolu):
             
-            # rendered_image_PIL is 256*256 (default size)
-            # rendered_image shape is [num_pose, 3, 256, 256]
-            rendered_image_PIL = F.to_pil_image(rendered_image[index])
-            rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
-            # rendered_image_PIL.save(f'{self.path_to_save_images}/{index}_rendered_image_only.png', bbox_inches='tight')
+            # # rendered_image_PIL is 256*256 (default size)
+            # # rendered_image shape is [num_pose, 3, 256, 256]
+            # rendered_image_PIL = F.to_pil_image(rendered_image[index])
+            # rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
+            # # rendered_image_PIL.save(f'{self.path_to_save_images}/{index}_rendered_image_only.png', bbox_inches='tight')
             
-            eroded_mask_PIL = F.to_pil_image(eroded_mask[index])
-            # eroded_mask_PIL = resize(eroded_mask_PIL, target_res = 840, resize=True, to_pil=True)
-            # eroded_mask_PIL.save(f'{self.path_to_save_images}/{index}_eroded_mask.png', bbox_inches='tight')
+            # # Shape of target_image is [num_pose, 3, 256, 256]
+            # target_image_PIL = F.to_pil_image(target_image[index])
+            # #target_image_PIL = resize(target_image_PIL, target_res = 840, resize=True, to_pil=True)
             
-            # Shape of target_image is [num_pose, 3, 256, 256]
-            target_image_PIL = F.to_pil_image(target_image[index])
-            #target_image_PIL = resize(target_image_PIL, target_res = 840, resize=True, to_pil=True)
+            ## LOSS
+            ## loss = nn_functional.l1_loss(kps_1_batch, corres_target_kps, reduction='mean')
+            ## draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
             
+            rendered_image_PIL = F.to_pil_image(rendered_images_resized_840[index])
+            target_image_PIL = F.to_pil_image(target_images_resized_840[index])
+
             start_time = time.time()
-            target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_1_batch, img2=target_image_PIL, index = index ,model=self.sd_model, aug=self.sd_aug)
+            target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_1_batch, img2=target_image_PIL, model=self.sd_model, aug=self.sd_aug)
             end_time = time.time()  # Record the end time
             # with open('log.txt', 'a') as file:
             #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
             print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
 
-            # LOSS
-            # loss = nn_functional.l1_loss(kps_1_batch, corres_target_kps, reduction='mean')
-            # draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
-            
-            rendered_image_with_kps = draw_correspondences_1_image(kps_1_batch, rendered_image_PIL, index = 0) #, color='yellow')              #[-6:]
+            rendered_image_with_kps = draw_correspondences_1_image(kps_1_batch, rendered_image_PIL, index = 0) #, color='yellow')            
             # # Set the background color to grey
             # plt.gcf().set_facecolor('grey')
             
@@ -410,8 +411,6 @@ class Articulator(BaseModel):
         # with open('log.txt', 'a') as file:
         #     file.write(f"The 'renderer' took {end_time - start_time} seconds to run.\n")
         print(f"The renderer function took {end_time - start_time} seconds to run.")
-        
-        # target_img_tensor_list = []
         
         # Creates an empty tensor to hold the final result
         # all_generated_target_img shape is [num_pose, 3, 256, 256]
