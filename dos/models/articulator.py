@@ -444,6 +444,8 @@ class Articulator(BaseModel):
             # all_generated_target_img["target_img_NO_kps"] = target_img_rgb
             
              # Inserts the new image into the final tensor
+            # resizes the image to the target resolution
+            target_img_rgb = torch.nn.functional.interpolate(target_img_rgb, size=all_generated_target_img.shape[2:], mode='bilinear', align_corners=False)
             all_generated_target_img[i] = target_img_rgb.squeeze(0)
         
         
