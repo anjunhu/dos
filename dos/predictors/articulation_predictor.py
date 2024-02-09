@@ -16,6 +16,9 @@ class ArticulationPredictor(nn.Module):
         # Using nn.Embedding to act as a lookup table
         self.bones_rotations = nn.Embedding(size_dataset, num_bones * 3) # Shape is torch.Size([49, 60]) 
         
+        # Initialize the embedding weights to zeros
+        # self.bones_rotations.weight.data.zero_()
+        
         # Initialising the bone rotation parameter with zeros to make sure it starts from rest pose.
         # nn.init.zeros_(self.bones_rotations.weight)
         
