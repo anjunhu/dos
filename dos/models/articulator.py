@@ -205,8 +205,8 @@ class Articulator(BaseModel):
             print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
 
             # LOSS
-            loss = nn_functional.l1_loss(kps_1_batch, corres_target_kps, reduction='mean')
-            # draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
+            loss = nn_functional.mse_loss(kps_1_batch, corres_target_kps, reduction='mean')
+            # draw.text((50, 50), f"l2 Loss:{loss}", fill='orange', font = font)
             
             rendered_image_with_kps = draw_correspondences_1_image(kps_1_batch, rendered_image_PIL, index = 0) #, color='yellow')              #[-6:]
             # # Set the background color to grey
@@ -231,8 +231,8 @@ class Articulator(BaseModel):
             
 
             # LOSS CALCULATED AFTER CYCLE-CONSISTENCY CHECK
-            loss = nn_functional.l1_loss(kps_1_batch, cycle_consi_corres_kps, reduction='mean')
-            # draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
+            loss = nn_functional.mse_loss(kps_1_batch, cycle_consi_corres_kps, reduction='mean')
+            # draw.text((50, 50), f"l2 Loss:{loss}", fill='orange', font = font)
             # plt.text(80, 0.95, f' Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
             
             cycle_consi_image_with_kps_list.append(cycle_consi_image_with_kps)
@@ -484,12 +484,12 @@ class Articulator(BaseModel):
         
         # Keypoint loss
         # Computes the loss between the source and target keypoints
-        print('Calculating l1 loss')
+        print('Calculating l2 loss')
         # loss = nn_functional.mse_loss(rendered_keypoints, target_keypoints, reduction='mean')
         model_outputs["rendered_kps"] = model_outputs["rendered_kps"].to(self.device)
         model_outputs["target_corres_kps"] = model_outputs["target_corres_kps"].to(self.device)
 
-        loss = nn_functional.l1_loss(model_outputs["rendered_kps"], model_outputs["target_corres_kps"], reduction='mean')
+        loss = nn_functional.mse_loss(model_outputs["rendered_kps"], model_outputs["target_corres_kps"], reduction='mean')
         
         # print('model_outputs["target_corres_kps"] shape', model_outputs["target_corres_kps"].shape)
         # print('model_outputs["rendered_kps"] Shape', model_outputs["rendered_kps"].shape)
