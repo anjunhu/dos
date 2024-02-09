@@ -16,43 +16,6 @@ from PIL import Image, ImageDraw, ImageFont
 import ipdb
 import time
 
-
-# NOT_FUSE = False
-# ONLY_DINO = False
-# DINOV1 = False
-# FUSE_DINO = False if NOT_FUSE else True
-# DINOV2 = False if DINOV1 else True
-# CO_PCA_DINO = 0
-# CO_PCA = True
-# MODEL_SIZE = 'base'
-# TEXT_INPUT = False
-# EDGE_PAD = False
-# # set true to use the raw features from sd
-# RAW = False
-# # the dimensions of the three groups of sd features
-# PCA_DIMS =[256, 256, 256]
-# # first three correspond to three layers for the sd features, and the last two for the ensembled sd/dino features
-# WEIGHT =[1,1,1,1,1]
-# MASK = False
-
-# # SIZE=960; # image size for the sd input # ORIGINAL CODE
-# model_dict={'small':'dinov2_vits14',
-#                 'base':'dinov2_vitb14',
-#                 'large':'dinov2_vitl14',
-#                 'giant':'dinov2_vitg14'}
-
-# model_type = model_dict[MODEL_SIZE] if DINOV2 else 'dino_vits8'
-# stride = 14 if DINOV2 else 4 if ONLY_DINO else 8
-# device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-# start_time = time.time()
-# extractor = ViTExtractor(model_type, stride, device=device)
-# end_time = time.time()
-# # # Open a file in append mode
-# # with open('log.txt', 'a') as file:
-# #     file.write(f"The ViTExtractor function took {end_time - start_time} seconds to run.\n")
-# print(f'The ViTExtractor function took {end_time - start_time} seconds to run.')
-
 class ComputeCorrespond:
         
     def __init__(self):
@@ -84,7 +47,7 @@ class ComputeCorrespond:
         print(f'The ViTExtractor function took {self.end_time - self.start_time} seconds to run.')
 
       
-    def compute_correspondences_sd_dino(self, img1, img1_kps, img2, index, model, aug, files=None, category='horse', mask=False, dist='l2', thresholds=None, real_size=960):  # kps,
+    def compute_correspondences_sd_dino(self, img1, img1_kps, img2, model, aug, index=0, files=None, category='horse', mask=False, dist='l2', thresholds=None, real_size=960):  # kps,
         # print('compute_correspondences func is running...')
         
         img_size = 840 if self.DINOV2 else 240 if self.ONLY_DINO else 480    # ORIGINAL CODE # should it be 224 or 240, because 60 * stride(i.e 4) is 240
@@ -338,9 +301,9 @@ class ComputeCorrespond:
         nn_y = (nn_y_patch - 1) * self.stride + self.stride + patch_size // 2 - .5
         kps_2_to_1 = torch.stack([nn_x, nn_y]).permute(1, 0)
         
-        img2 = draw_correspondences_1_image(kps_1_to_2, img2, index=index) #, color = None)
+        img2 = draw_correspondences_1_image(kps_1_to_2, img2, index=0) #, color = None)
         
-        img_cc = draw_correspondences_1_image(kps_2_to_1, img1, index=index)
+        img_cc = draw_correspondences_1_image(kps_2_to_1, img1, index=0)
         
         # ADDING LOSS VALUE
         # draw = ImageDraw.Draw(img2)

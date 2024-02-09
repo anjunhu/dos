@@ -55,8 +55,6 @@ def poses_helper_func(size, device, phis, thetas, radius_range=[2.5, 2.5], angle
         torch.sin(thetas) * torch.cos(phis),
     ], dim=-1) # [B, 3]
     
-    print('centers', centers)
-    
     # jitters
     if jitter:
         centers = centers + (torch.rand_like(centers) * 0.2 - 0.1)

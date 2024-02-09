@@ -25,8 +25,8 @@ model:
     body_bones_type: z_minmax_y+
     temperature: 0.05
 
-  path_to_save_images: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1494_sds_latent
-  num_pose: 10
+  path_to_save_images: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1499_sds_latent
+  num_pose: 20
   num_sample_bone_line: 4  # 
   mode_kps_selection: "kps_fr_sample_on_bone_line" # Options are "kps_fr_sample_on_bone_line" OR "kps_fr_sample_farthest_points"
   shape_template_path: /scratch/shared/beegfs/tomj/projects/articulator/data/synth_animals/shape_templates/cow_female-rd/Cow-OBJ-v01/Cow_Highpoly.obj
@@ -49,7 +49,7 @@ model:
   diffusion_Text_to_Target_Img:  # variable Name
     _target_: dos.components.diffusion_model_text_to_image.diffusion_sds.DiffusionForTargetImg # Class Name
     cache_dir: /work/oishideb/cache/huggingface_hub
-    output_dir: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1494_sds_latent/sd_sds_output/
+    output_dir: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1499_sds_latent/sd_sds_output/
     init_image_path: /users/oishideb/laam/dos/examples/data/cow.png
     vis_name: cow-sds_latent-l2_image-600-lr1e-1.jpg
     # prompts: 'A photograph of a single cow running very fast, back view.' #.The photo should have a grey background.' # DOS-1338  opti multi_view_azimu, GS20, Num_Infe50
@@ -59,22 +59,24 @@ model:
     mode: sds_latent # Options are sds_image OR sds_latent-l2_image # sds_latent
     lr: 0.1  # For DeepFloyd
     lr_l2: 1e4  # For SD+SDS
-    seed: 2
-    num_inference_steps: 50
-    guidance_scale: 20
+    # seed: 2
+    num_inference_steps: 30
+    guidance_scale: 100
     dds: False
     select_diffusion_option: 'sd' # Options are sd, sd_XL, df, sd_dds_loss  # by default is sds loss
     image_fr_path: False
+    save_visuals_every_n_iter: 2
+    schedule: "[600] * 50"
 
 renderer:   # variable Name
   _target_: dos.modules.renderer.Renderer # Class Name
   cam_pos_z_offset: 0.0
   fov: 28.84
 
-path_to_save_img_per_iteration: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1494_sds_latent
+path_to_save_img_per_iteration: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1499_sds_latent
 checkpoint_root_dir: /work/oishideb/articulation_cow_chkpts
 experiment_name: articulator-dev-0.1
-save_each_iteration: True 
+save_each_iteration: True
 evaluate_the_model: False
 
 device: cuda:0
@@ -82,7 +84,7 @@ device: cuda:0
 # resume: True
 
 # learning_rate: 1e-9  # tried with 0.01, 0.5, 0.9, 1;   # 1e-4   # DOS_1432
-learning_rate: 1e-5           # DOS_1433
+learning_rate: 0.1           # DOS_1433
 # for debugging
 num_iterations: 100
 num_vis_iterations: 1
