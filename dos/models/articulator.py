@@ -62,7 +62,7 @@ class Articulator(BaseModel):
         # TODO: Create a view sampler class to encapsulate the view sampling logic and settings
         view_option = "multi_view_azimu",
         random_camera_radius=[2.5, 2.5],
-        debug_mode = True,
+        debug_mode = False,
     ):
         super().__init__()
         self.path_to_save_images = path_to_save_images
