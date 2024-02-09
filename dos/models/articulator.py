@@ -414,21 +414,26 @@ class Articulator(BaseModel):
         
         # Creates an empty tensor to hold the final result
         # all_generated_target_img shape is [num_pose, 3, 256, 256]
-        all_generated_target_img = torch.empty(renderer_outputs["image_pred"].shape[0:])
         
         # all_generated_target_img = {}
         
-        for i in range(pose.shape[0]):
+        # For Debugging purpose, save all the poses before optimisation
+        self.save_all_poses_before_optimisation(pose, renderer_outputs, self.path_to_save_images)
+        # GENERATING TARGET IMAGES USING DIFFUSION (SD or DF)
+        target_img_rgb = self.diffusion_Text_to_Target_Img.run_experiment(
+            input_image=renderer_outputs["image_pred"],
+            image_fr_path=False,
+        )
         
-            # For Debugging purpose, save all the poses before optimisation
-            self.save_all_poses_before_optimisation(pose, renderer_outputs, self.path_to_save_images)
-            # GENERATING TARGET IMAGES USING DIFFUSION (SD or DF)
-            target_img_rgb = self.diffusion_Text_to_Target_Img.run_experiment(
-            input_image = renderer_outputs["image_pred"][i][None],
-            image_fr_path = False,
-            index=i
-            )
-            
+        # # Inserts the new image into a dictionary
+        # # all_generated_target_img["target_img_NO_kps"].shape is [1, 3, 256, 256]
+        # all_generated_target_img["target_img_NO_kps"] = target_img_rgb
+        
+        # Inserts the new image into the final tensor
+        # resizes the image to the target resolution
+        target_img_rgb = torch.nn.functional.interpolate(target_img_rgb, size=renderer_outputs["image_pred"].shape[2:], mode='bilinear', align_corners=False)
+
+        for i in range(pose.shape[0]):
             # target_img_rgb.shape is [1, 3, 256, 256]
             target_image_PIL = F.to_pil_image(target_img_rgb[0])
             #rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
@@ -438,18 +443,8 @@ class Articulator(BaseModel):
             os.makedirs(dir_path, exist_ok=True)
             # Save the image
             target_image_PIL.save(f'{dir_path}{i}_diff_pose_target_image.png', bbox_inches='tight')
-            
-            # # Inserts the new image into a dictionary
-            # # all_generated_target_img["target_img_NO_kps"].shape is [1, 3, 256, 256]
-            # all_generated_target_img["target_img_NO_kps"] = target_img_rgb
-            
-             # Inserts the new image into the final tensor
-            # resizes the image to the target resolution
-            target_img_rgb = torch.nn.functional.interpolate(target_img_rgb, size=all_generated_target_img.shape[2:], mode='bilinear', align_corners=False)
-            all_generated_target_img[i] = target_img_rgb.squeeze(0)
         
-        
-        print('all_generated_target_img.shape', all_generated_target_img.shape)
+        print('target_img_rgb.shape', target_img_rgb.shape)
         start_time = time.time()
         # compute_correspondences for keypoint loss
         correspondences_dict = self.compute_correspondences(
@@ -460,7 +455,7 @@ class Articulator(BaseModel):
             #bones_predictor_outputs["bones_pred"],    # this is a rest pose    # bones_predictor_outputs["bones_pred"].shape is torch.Size([4, 20, 2, 3]), 4 is batch size, 20 is number of bones, 2 are the two endpoints of the bones and 3 means the 3D point defining one of the end points of the line segment in 3D that defines the bone 
             renderer_outputs["mask_pred"],
             renderer_outputs["image_pred"],            # renderer_outputs["image_pred"].shape is torch.Size([4, 3, 256, 256]), 4 is batch size, 3 is RGB channels, 256 is image resolution
-            all_generated_target_img,                  # CHANGED replaced the target image with sd generated, BEFORE batch["image"],
+            target_img_rgb,                  # CHANGED replaced the target image with sd generated, BEFORE batch["image"],
             # batch["image"]                           # static Target Images
         )
 
@@ -472,7 +467,7 @@ class Articulator(BaseModel):
         outputs = {}
         # TODO: probaly rename the ouputs of the renderer
         
-        # outputs.update(all_generated_target_img)
+        # outputs.update(target_img_rgb)
         outputs.update(renderer_outputs)        # renderer_outputs keys are dict_keys(['image_pred', 'mask_pred', 'albedo', 'shading'])
         outputs.update(correspondences_dict)
 
