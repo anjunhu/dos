@@ -34,12 +34,15 @@ model:
   enable_texture_predictor: False
   view_option: "multi_view_azimu" # Options are "multi_view_azimu"; "multi_view_rand"; "single_view"
   random_camera_radius: 2.5
+  cycle_check_img_save: False
+  bones_rotations: "bones_rotations" # Options are "bones_rotations"; "DUMMY_bones_rotations"; "NO_bones_rotations"
   debug_mode: False # IN DEBUG MODE, THIS WILL SWITCH OFF THE LOADING TO FUSE'S STABLE DIFFUSION MODEL
   
   articulation_predictor:
     _target_: dos.predictors.articulation_predictor.ArticulationPredictor  # Class Name
     size_dataset: 49
     num_bones: 20
+    degree: 10
     
   renderer:   # variable Name
     _target_: dos.modules.renderer.Renderer # Class Name
