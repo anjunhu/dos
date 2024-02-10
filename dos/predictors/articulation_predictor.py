@@ -8,11 +8,12 @@ import torch.nn as nn
 
 class ArticulationPredictor(nn.Module):
     
-    def __init__(self, size_dataset, num_bones):
+    def __init__(self, size_dataset, num_bones, degree):
         super(ArticulationPredictor, self).__init__()
         
-        degree = 10 #(0.17 rad)
-        rad = degree * (math.pi/180)
+        self.degree = degree
+        # degree = 10 #(0.17 rad)
+        rad = self.degree * (math.pi/180)
         
         # Each bone_rotation is a 3D vector, 3 corresponds to x, y z coordinates
         # Using nn.Embedding to act as a lookup table
@@ -49,8 +50,7 @@ class ArticulationPredictor(nn.Module):
         # Extracting index of the samples from the batch using the sample names
         
         # degrees to radians
-        degree = 10
-        rad = degree * (math.pi/180)
+        rad = self.degree * (math.pi/180)
         
         sample_names = batch['name']
         
