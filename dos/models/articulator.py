@@ -171,6 +171,7 @@ class Articulator(BaseModel):
             kps_img_resolu = self.kps_fr_sample_farthest_points(visible_vertices, articulated_mesh, eroded_mask)
         
         output_dict = {}
+        corres_target_kps_tensor_stack = torch.empty(0, kps_img_resolu.shape[1], 2, device=kps_img_resolu.device)
         cycle_consi_kps_tensor_stack = torch.empty(0, kps_img_resolu.shape[1], 2, device=kps_img_resolu.device)
         rendered_image_with_kps_list = []
         rendered_image_NO_kps_list = []
@@ -179,8 +180,8 @@ class Articulator(BaseModel):
         cycle_consi_image_with_kps_list = []
         target_image_with_kps_list_after_cyc_check = []
         rendered_image_with_kps_list_after_cyc_check =[] 
-        kps_img_resolu_list = []
-        corres_target_kps_list = []
+        # kps_img_resolu_list = []
+        # corres_target_kps_list = []
         
         rendered_image = nn_functional.interpolate(rendered_image, size=(840, 840), mode='bilinear', align_corners=False)
         target_image = nn_functional.interpolate(target_image, size=(840, 840), mode='bilinear', align_corners=False)
@@ -198,77 +199,61 @@ class Articulator(BaseModel):
             #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
             print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
 
-            rendered_image_with_kps = draw_correspondences_1_image(kps_1_batch, rendered_image_PIL, index = 0) #, color='yellow')            
+            rendered_image_with_kps = draw_correspondences_1_image(kps_1_batch, rendered_image_PIL) #, color='yellow')            
             
             rendered_image_with_kps_list.append(rendered_image_with_kps)
             rendered_image_NO_kps_list.append(rendered_image_PIL)
             target_image_with_kps_list.append(target_image_with_kps)
             target_image_NO_kps_list.append(target_image_PIL)
-            
-            # LOSS CALCULATED AFTER CYCLE-CONSISTENCY CHECK
-            # loss = nn_functional.mse_loss(kps_1_batch, cycle_consi_corres_kps, reduction='mean')
-            # draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
-            # plt.text(80, 0.95, f' Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
-            
             cycle_consi_image_with_kps_list.append(cycle_consi_image_with_kps)
+            
+            corres_target_kps_tensor_stack = torch.cat((corres_target_kps_tensor_stack, corres_target_kps.unsqueeze(0)), dim=0)
             cycle_consi_kps_tensor_stack = torch.cat((cycle_consi_kps_tensor_stack, cycle_consi_corres_kps.unsqueeze(0)), dim=0)
             
-            # REMOVING POINTS FOLLOWING CYCLE CONSISTENCY CHECK
-            # Calculate the difference
-            difference = torch.abs(kps_1_batch - cycle_consi_corres_kps)
-            # Find the points where the difference is less than or equal to 2
-            mask = torch.all(difference <= 15, dim=1)
-            # Apply the mask to kps_img_resolu
-            kps_img_resolu = kps_1_batch[mask]
+        # LOSS CALCULATED AFTER CYCLE-CONSISTENCY CHECK
+        # loss = nn_functional.mse_loss(kps_img_resolu, cycle_consi_kps_tensor_stack, reduction='mean')
+        # draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
+        # plt.text(80, 0.95, f' Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
             
-            # Update the Target kps after CYCLE CONSISTENCY CHECK
-            corres_target_kps = corres_target_kps[mask]
-            
-            rendered_image_with_kps_cyc_check = draw_correspondences_1_image(kps_img_resolu, rendered_image_PIL, index = 0) #, color='yellow')              #[-6:]
-            target_image_with_kps_cyc_check = draw_correspondences_1_image(corres_target_kps, target_image_PIL, index = 0) #, color='yellow')              #[-6:]
-            
-            # SAVE CYCLE CONSISTENCY IMAGES
-            if self.cycle_check_img_save:
-                # # Set the background color to grey
-                # plt.gcf().set_facecolor('grey')
-                # plt.text(80, 0.95, f'Cycle Consistency', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
-                cycle_consi_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_cycle.png', bbox_inches='tight')
-            
-                plt.text(30, 0.95, f'Final Rendered Img after Eroded Mask & Cycle Consi Check', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
-
-                ## For now commented Loss printout
-                ## plt.text(80, 40, f'Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
-                rendered_image_with_kps_cyc_check.savefig(f'{self.path_to_save_images}/{index}_rendered_image_with_kps_after_cyclic_check.png', bbox_inches='tight') 
-
-                # # Set the background color to grey
-                # plt.gcf().set_facecolor('grey')    
-                target_image_with_kps_cyc_check.savefig(f'{self.path_to_save_images}/{index}_target_image_with_kps_after_cyclic_check.png', bbox_inches='tight') 
-                plt.close()    
-            
-            rendered_image_with_kps_list_after_cyc_check.append(rendered_image_with_kps_cyc_check)
-            target_image_with_kps_list_after_cyc_check.append(target_image_with_kps_cyc_check)
-            corres_target_kps_list.append(corres_target_kps)
-            kps_img_resolu_list.append(kps_img_resolu)
-            
-
-        #---- Following cycle consistency check some of the points got removed, in order to make the length same, it has been padded with zeros.
-        # Find the maximum length
-        max_length = max(len(item) for item in kps_img_resolu_list if hasattr(item, '__len__'))
-        # Pad tensors in both lists
-        padded_kps_img_resolu_list = [padding_tensor(tensor.to(self.device), max_length, self.device) for tensor in kps_img_resolu_list]
-        padded_corres_target_kps_list = [padding_tensor(tensor.to(self.device), max_length, self.device) for tensor in corres_target_kps_list]
+        # REMOVING POINTS FOLLOWING CYCLE CONSISTENCY CHECK
+        # Calculate the difference
+        difference = torch.abs(kps_img_resolu - cycle_consi_kps_tensor_stack)
+        # Find the points where the difference is less than or equal to 2
+        mask = torch.all(difference <= 15, dim=2)
+        # Expanding mask to make it compatible for broadcasting
+        mask_expanded = mask.unsqueeze(-1) 
         
+        # Use the mask to zero out points
+        # We multiply the mask with the keypoints. However, since the mask is Boolean, we first need to convert it to the same dtype as kps_img_resolu
+        kps_img_resolu_filtered = kps_img_resolu * mask_expanded.type_as(kps_img_resolu)
+
+        # Update the Target kps after CYCLE CONSISTENCY CHECK
+        corres_target_kps_filtered = corres_target_kps_tensor_stack * mask_expanded.type_as(corres_target_kps_tensor_stack)
+        
+        
+        # IF TRUE THEN SAVE CYCLE CONSISTENCY IMAGES
+        if self.cycle_check_img_save:
+            for index in range(kps_img_resolu.shape[0]):
+                rendered_image_with_kps_cyc_check = draw_correspondences_1_image(kps_img_resolu[index], rendered_image_PIL) #, color='yellow')              #[-6:]
+                target_image_with_kps_cyc_check = draw_correspondences_1_image(corres_target_kps_tensor_stack[index], target_image_PIL) #, color='yellow')              #[-6:]
+    
+                rendered_image_with_kps_list_after_cyc_check.append(rendered_image_with_kps_cyc_check)
+                target_image_with_kps_list_after_cyc_check.append(target_image_with_kps_cyc_check)
+                
+                # SAVE CYCLE CONSISTENCY IMAGES
+                self.save_cyc_consi_check_images(cycle_consi_image_with_kps, rendered_image_with_kps_cyc_check, target_image_with_kps_cyc_check, index)
+                
         
         output_dict = {
-        "rendered_kps": torch.stack(padded_kps_img_resolu_list),
+        "rendered_kps": kps_img_resolu_filtered,                     # torch.stack(padded_kps_img_resolu_list),
         "rendered_image_with_kps": rendered_image_with_kps_list,
         "target_image_with_kps": target_image_with_kps_list,
         "target_img_NO_kps": target_image_NO_kps_list,
         "rendered_img_NO_kps": rendered_image_NO_kps_list,
-        "target_corres_kps": torch.stack(padded_corres_target_kps_list), 
+        "target_corres_kps": corres_target_kps_filtered,               # torch.stack(padded_corres_target_kps_list), 
         "cycle_consi_image_with_kps": cycle_consi_image_with_kps_list,
         "rendered_image_with_kps_list_after_cyc_check": rendered_image_with_kps_list_after_cyc_check,
-        "target_image_with_kps_list_after_cyc_check": target_image_with_kps_list_after_cyc_check
+        "target_image_with_kps_list_after_cyc_check": target_image_with_kps_list_after_cyc_check,
         }        
         
         ## Saving multiple random poses with and without keypoints visualisation
@@ -562,13 +547,14 @@ class Articulator(BaseModel):
             os.makedirs(dir_path, exist_ok=True)
             model_outputs["cycle_consi_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_cycle_consi.png', bbox_inches='tight')
 
-            dir_path = f'{path_to_save_img_per_iteration}/rendered_image_with_kps_list_after_cyc_check/{index}_pose'
-            os.makedirs(dir_path, exist_ok=True)
-            model_outputs["rendered_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_rendered_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
+            if self.cycle_check_img_save:
+                dir_path = f'{path_to_save_img_per_iteration}/rendered_image_with_kps_list_after_cyc_check/{index}_pose'
+                os.makedirs(dir_path, exist_ok=True)
+                model_outputs["rendered_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_rendered_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
 
-            dir_path = f'{path_to_save_img_per_iteration}/target_image_with_kps_list_after_cyc_check/{index}_pose'
-            os.makedirs(dir_path, exist_ok=True)
-            model_outputs["target_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_target_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
+                dir_path = f'{path_to_save_img_per_iteration}/target_image_with_kps_list_after_cyc_check/{index}_pose'
+                os.makedirs(dir_path, exist_ok=True)
+                model_outputs["target_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_target_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
 
             end_time = time.time()  # Record the end time
             print(f"The 'Saving img for every iterations' took {end_time - start_time} seconds to run.")
@@ -859,3 +845,18 @@ class Articulator(BaseModel):
         sampled_points = sampled_points.reshape(batch_size, -1, 3)
 
         return sampled_points
+
+
+    def save_cyc_consi_check_images(self, cycle_consi_image_with_kps, rendered_image_with_kps_cyc_check, target_image_with_kps_cyc_check, index):
+        # # Set the background color to grey
+        # plt.gcf().set_facecolor('grey')
+        # plt.text(80, 0.95, f'Cycle Consistency', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
+        cycle_consi_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_cycle.png', bbox_inches='tight')
+        plt.text(30, 0.95, f'Final Rendered Img after Eroded Mask & Cycle Consi Check', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
+        ## For now commented Loss printout
+        ## plt.text(80, 40, f'Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
+        rendered_image_with_kps_cyc_check.savefig(f'{self.path_to_save_images}/{index}_rendered_image_with_kps_after_cyclic_check.png', bbox_inches='tight')
+        # # Set the background color to grey
+        # plt.gcf().set_facecolor('grey')    
+        target_image_with_kps_cyc_check.savefig(f'{self.path_to_save_images}/{index}_target_image_with_kps_after_cyclic_check.png', bbox_inches='tight')
+        plt.close()
