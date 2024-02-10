@@ -61,6 +61,8 @@ class Articulator(BaseModel):
         # TODO: Create a view sampler class to encapsulate the view sampling logic and settings
         view_option = "multi_view_azimu",
         random_camera_radius=[2.5, 2.5],
+        cycle_check_img_save = False,
+        bones_rotations = "bones_rotations",
         debug_mode = False,
     ):
         super().__init__()
@@ -94,7 +96,9 @@ class Articulator(BaseModel):
         self.view_option = view_option 
         self.random_camera_radius = random_camera_radius
         
-        self.cycle_check_img_save = False
+        self.cycle_check_img_save = cycle_check_img_save
+        
+        self.bones_rotations = bones_rotations
         
         self.debug_mode = debug_mode
         
@@ -178,28 +182,14 @@ class Articulator(BaseModel):
         kps_img_resolu_list = []
         corres_target_kps_list = []
         
-        rendered_image = nn_functional.interpolate(rendered_image, size=(840, 840))    # , mode='bilinear', align_corners=False)
-        target_image = nn_functional.interpolate(target_image, size=(840, 840))        # , mode='bilinear', align_corners=False)
+        rendered_image = nn_functional.interpolate(rendered_image, size=(840, 840), mode='bilinear', align_corners=False)
+        target_image = nn_functional.interpolate(target_image, size=(840, 840), mode='bilinear', align_corners=False)
 
         # kps_img_resolu shape is [20, 40, 2], [num_pose, num_kps, xy_coordinates]
         for index, kps_1_batch in enumerate(kps_img_resolu):
-            
-            # # rendered_image_PIL is 256*256 (default size)
-            # # rendered_image shape is [num_pose, 3, 256, 256]
+
             rendered_image_PIL = F.to_pil_image(rendered_image[index])
-            # rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
-            # rendered_image_PIL.save(f'{self.path_to_save_images}/{index}_rendered_image_only.png', bbox_inches='tight')
-            
-            # Shape of target_image is [num_pose, 3, 256, 256]
             target_image_PIL = F.to_pil_image(target_image[index])
-            # target_image_PIL = resize(target_image_PIL, target_res = 840, resize=True, to_pil=True)
-            
-            ## LOSS
-            ## loss = nn_functional.l1_loss(kps_1_batch, corres_target_kps, reduction='mean')
-            ## draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
-            
-            # rendered_image_PIL = F.to_pil_image(rendered_image[index])
-            # target_image_PIL = F.to_pil_image(target_image[index])
 
             start_time = time.time()
             target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_1_batch, img2=target_image_PIL, model=self.sd_model, aug=self.sd_aug)
@@ -209,32 +199,14 @@ class Articulator(BaseModel):
             print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
 
             rendered_image_with_kps = draw_correspondences_1_image(kps_1_batch, rendered_image_PIL, index = 0) #, color='yellow')            
-            # # Set the background color to grey
-            # plt.gcf().set_facecolor('grey')
-            
-            ## For now commented out Loss print out
-            ## plt.text(80, 0.95, f'Rendered Img ; Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
-            #rendered_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_rendered_image_with_kps.png', bbox_inches='tight') 
-            
-            # # Set the background color to grey
-            # plt.gcf().set_facecolor('grey')
-            # target_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_target.png', bbox_inches='tight')
-            # plt.close()
-            
-            # rendered_image_Matplot_Fig = tensor_to_matplotlib_figure(rendered_image[index])
-            # target_image_Matplot_Fig = tensor_to_matplotlib_figure(target_image[index])
             
             rendered_image_with_kps_list.append(rendered_image_with_kps)
-            # rendered_image_NO_kps_list.append(rendered_image_Matplot_Fig)
             rendered_image_NO_kps_list.append(rendered_image_PIL)
-            
             target_image_with_kps_list.append(target_image_with_kps)
-            # target_image_NO_kps_list.append(target_image_Matplot_Fig)
             target_image_NO_kps_list.append(target_image_PIL)
             
-
             # LOSS CALCULATED AFTER CYCLE-CONSISTENCY CHECK
-            # loss = nn_functional.l1_loss(kps_1_batch, cycle_consi_corres_kps, reduction='mean')
+            # loss = nn_functional.mse_loss(kps_1_batch, cycle_consi_corres_kps, reduction='mean')
             # draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
             # plt.text(80, 0.95, f' Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
             
@@ -288,7 +260,7 @@ class Articulator(BaseModel):
         
         
         output_dict = {
-        "rendered_kps": torch.stack(padded_kps_img_resolu_list),  #[-6:]
+        "rendered_kps": torch.stack(padded_kps_img_resolu_list),
         "rendered_image_with_kps": rendered_image_with_kps_list,
         "target_image_with_kps": target_image_with_kps_list,
         "target_img_NO_kps": target_image_NO_kps_list,
@@ -325,23 +297,25 @@ class Articulator(BaseModel):
         
         batch_size, num_bones = bones_predictor_outputs["bones_pred"].shape[:2]
         
-        # BONE ROTATIONS
-        start_time = time.time()
-        bones_rotations = self.articulation_predictor(batch, num_bones)
+        if self.bones_rotations == "bones_rotations":
+            start_time = time.time()
+            # BONE ROTATIONS
+            bones_rotations = self.articulation_predictor(batch, num_bones)
+            end_time = time.time()  # Record the end time
+            # with open('log.txt', 'a') as file:
+            #     file.write(f"The 'articulation_predictor' took {end_time - start_time} seconds to run.\n")
+            print(f"The articulation_predictor function took {end_time - start_time} seconds to run.")
+            
+        elif self.bones_rotations == "NO_bones_rotations":
+            # NO BONE ROTATIONS
+            bones_rotations = torch.zeros(batch_size, num_bones, 3, device=mesh.v_pos.device)
         
-        end_time = time.time()  # Record the end time
-        # with open('log.txt', 'a') as file:
-        #     file.write(f"The 'articulation_predictor' took {end_time - start_time} seconds to run.\n")
-        print(f"The articulation_predictor function took {end_time - start_time} seconds to run.")
-                
-        # NO BONE ROTATIONS
-        # bones_rotations = torch.zeros(batch_size, num_bones, 3, self.device=mesh.v_pos.device)
-        
-        # DUMMY BONE ROTATIONS - pertrub the bones rotations (only to test the implementation)
-        # bones_rotations = bones_rotations + torch.randn_like(bones_rotations) * 0.1
+        elif self.bones_rotations == "DUMMY_bones_rotations":
+            # DUMMY BONE ROTATIONS - pertrub the bones rotations (only to test the implementation)
+            bones_rotations = bones_rotations + torch.randn_like(bones_rotations) * 0.1
+    
     
         start_time = time.time()  # Record the start time
-        
         # apply articulation to mesh
         articulated_mesh, aux = mesh_skinning(
             mesh,
@@ -351,7 +325,6 @@ class Articulator(BaseModel):
             bones_predictor_outputs["skinnig_weights"],
             output_posed_bones=True,
         )
-
         end_time = time.time()  # Record the end time
         # with open('log.txt', 'a') as file:
         #     file.write(f"The 'mesh_skinning' took {end_time - start_time} seconds to run.\n")
