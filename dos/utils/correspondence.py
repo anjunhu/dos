@@ -39,7 +39,7 @@ def tensor_to_matplotlib_figure(tensor):
     return fig
 
 #---- This func is written by Oishi
-def draw_correspondences_1_image(points1: List[Tuple[float, float]], image1: Image.Image, index) -> plt.Figure:
+def draw_correspondences_1_image(points1: List[Tuple[float, float]], image1: Image.Image, index=0) -> plt.Figure:
 
     num_points = len(points1)
 
