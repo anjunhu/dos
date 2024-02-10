@@ -36,7 +36,6 @@ from ..utils import multi_view, utils
 from ..utils import visuals as visuals_utils
 from .base import BaseModel
 
-
 class Articulator(BaseModel):
     """
     Articulator predicts instance shape parameters (instance shape) - optimisation based - predictor takes only id as input
@@ -179,28 +178,28 @@ class Articulator(BaseModel):
         kps_img_resolu_list = []
         corres_target_kps_list = []
         
-        rendered_images_resized_840 = nn_functional.interpolate(rendered_image, size=(840, 840))
-        target_images_resized_840 = nn_functional.interpolate(target_image, size=(840, 840))
+        rendered_image = nn_functional.interpolate(rendered_image, size=(840, 840))    # , mode='bilinear', align_corners=False)
+        target_image = nn_functional.interpolate(target_image, size=(840, 840))        # , mode='bilinear', align_corners=False)
 
         # kps_img_resolu shape is [20, 40, 2], [num_pose, num_kps, xy_coordinates]
         for index, kps_1_batch in enumerate(kps_img_resolu):
             
             # # rendered_image_PIL is 256*256 (default size)
             # # rendered_image shape is [num_pose, 3, 256, 256]
-            # rendered_image_PIL = F.to_pil_image(rendered_image[index])
+            rendered_image_PIL = F.to_pil_image(rendered_image[index])
             # rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
-            # # rendered_image_PIL.save(f'{self.path_to_save_images}/{index}_rendered_image_only.png', bbox_inches='tight')
+            # rendered_image_PIL.save(f'{self.path_to_save_images}/{index}_rendered_image_only.png', bbox_inches='tight')
             
-            # # Shape of target_image is [num_pose, 3, 256, 256]
-            # target_image_PIL = F.to_pil_image(target_image[index])
-            # #target_image_PIL = resize(target_image_PIL, target_res = 840, resize=True, to_pil=True)
+            # Shape of target_image is [num_pose, 3, 256, 256]
+            target_image_PIL = F.to_pil_image(target_image[index])
+            # target_image_PIL = resize(target_image_PIL, target_res = 840, resize=True, to_pil=True)
             
             ## LOSS
             ## loss = nn_functional.l1_loss(kps_1_batch, corres_target_kps, reduction='mean')
             ## draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
             
-            rendered_image_PIL = F.to_pil_image(rendered_images_resized_840[index])
-            target_image_PIL = F.to_pil_image(target_images_resized_840[index])
+            # rendered_image_PIL = F.to_pil_image(rendered_image[index])
+            # target_image_PIL = F.to_pil_image(target_image[index])
 
             start_time = time.time()
             target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_1_batch, img2=target_image_PIL, model=self.sd_model, aug=self.sd_aug)
@@ -219,16 +218,19 @@ class Articulator(BaseModel):
             
             # # Set the background color to grey
             # plt.gcf().set_facecolor('grey')
-            #target_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_target.png', bbox_inches='tight')
+            # target_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_target.png', bbox_inches='tight')
             # plt.close()
             
-            rendered_image_Matplot_Fig = tensor_to_matplotlib_figure(rendered_image[index])
-            target_image_Matplot_Fig = tensor_to_matplotlib_figure(target_image[index])
+            # rendered_image_Matplot_Fig = tensor_to_matplotlib_figure(rendered_image[index])
+            # target_image_Matplot_Fig = tensor_to_matplotlib_figure(target_image[index])
             
             rendered_image_with_kps_list.append(rendered_image_with_kps)
-            rendered_image_NO_kps_list.append(rendered_image_Matplot_Fig)
+            # rendered_image_NO_kps_list.append(rendered_image_Matplot_Fig)
+            rendered_image_NO_kps_list.append(rendered_image_PIL)
+            
             target_image_with_kps_list.append(target_image_with_kps)
-            target_image_NO_kps_list.append(target_image_Matplot_Fig)
+            # target_image_NO_kps_list.append(target_image_Matplot_Fig)
+            target_image_NO_kps_list.append(target_image_PIL)
             
 
             # LOSS CALCULATED AFTER CYCLE-CONSISTENCY CHECK
@@ -297,9 +299,8 @@ class Articulator(BaseModel):
         "target_image_with_kps_list_after_cyc_check": target_image_with_kps_list_after_cyc_check
         }        
         
-        # ## Saving multiple random poses with and without keypoints visualisation
-        # FIXME: save_multiple_random_poses is not working
-        # self.save_multiple_random_poses(output_dict, self.path_to_save_images)
+        ## Saving multiple random poses with and without keypoints visualisation
+        self.save_multiple_random_poses(output_dict, self.path_to_save_images)
         
         return output_dict
 
@@ -518,8 +519,8 @@ class Articulator(BaseModel):
     def save_multiple_random_poses(self, model_outputs, path_to_save_images):
         
         for index, item in enumerate(model_outputs["rendered_image_with_kps"]):
-            
-            # With KPs visualisation
+        
+            # With KPs visualisation - these images are Matplotlib Objects
             if not os.path.exists(f'{path_to_save_images}/all_poses_rendered_img_with_KPs'):
                 os.makedirs(f'{path_to_save_images}/all_poses_rendered_img_with_KPs')
             model_outputs["rendered_image_with_kps"][index].savefig(f'{path_to_save_images}/all_poses_rendered_img_with_KPs/{index}_poses_rendered_img_with_KPs.png', bbox_inches='tight')
@@ -527,14 +528,14 @@ class Articulator(BaseModel):
                 os.makedirs(f'{path_to_save_images}/all_poses_target_img_with_KPs')
             model_outputs["target_image_with_kps"][index].savefig(f'{path_to_save_images}/all_poses_target_img_with_KPs/{index}_poses_target_img_with_KPs.png', bbox_inches='tight')
             
-            # Without KPs visualisation
+            # Without KPs visualisation - these images are PIL Objects
             if not os.path.exists(f'{path_to_save_images}/all_poses_rendered_img_NO_KPs'):
                 os.makedirs(f'{path_to_save_images}/all_poses_rendered_img_NO_KPs')
-            model_outputs["rendered_img_NO_kps"][index].savefig(f'{path_to_save_images}/all_poses_rendered_img_NO_KPs/{index}_poses_rendered_img_NO_KPs.png', bbox_inches='tight')
+            model_outputs["rendered_img_NO_kps"][index].save(f'{path_to_save_images}/all_poses_rendered_img_NO_KPs/{index}_poses_rendered_img_NO_KPs.png', bbox_inches='tight')
             
             if not os.path.exists(f'{path_to_save_images}/all_poses_target_img_NO_KPs'):
                 os.makedirs(f'{path_to_save_images}/all_poses_target_img_NO_KPs')
-            model_outputs["target_img_NO_kps"][index].savefig(f'{path_to_save_images}/all_poses_target_img_NO_KPs/{index}_poses_target_img_NO_KPs.png', bbox_inches='tight')
+            model_outputs["target_img_NO_kps"][index].save(f'{path_to_save_images}/all_poses_target_img_NO_KPs/{index}_poses_target_img_NO_KPs.png', bbox_inches='tight')
             
 
     ## Saving poses along the azimuth
@@ -552,11 +553,11 @@ class Articulator(BaseModel):
         for i in range(pose.shape[0]):
             rendered_image_PIL = F.to_pil_image(renderer_outputs["image_pred"][i])
             #rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
-            dir_path = f'{path_to_save_images}/NEW_diff_pose/rendered_img/'
+            dir_path = f'{path_to_save_images}/azimuth_pose/rendered_img/'
             # Create the directory if it doesn't exist
             os.makedirs(dir_path, exist_ok=True)
             # Save the image
-            rendered_image_PIL.save(f'{dir_path}{i}_diff_pose_rendered_image.png', bbox_inches='tight')
+            rendered_image_PIL.save(f'{dir_path}{i}_azimuth_pose_rendered_image.png', bbox_inches='tight')
             
             
     # Saving Rendered Image at every iteration with keypoints visualisation
@@ -570,17 +571,19 @@ class Articulator(BaseModel):
             os.makedirs(dir_path, exist_ok=True)
             model_outputs["rendered_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_rendered_img_with_kps.png', bbox_inches='tight')
 
+            # This image is a PIL Object
             dir_path = f'{path_to_save_img_per_iteration}/rendered_img_NO_kps/{index}_pose'
             os.makedirs(dir_path, exist_ok=True)
-            model_outputs["rendered_img_NO_kps"][index].savefig(f'{dir_path}/{iteration}_rendered_img_NO_kps.png', bbox_inches='tight')
+            model_outputs["rendered_img_NO_kps"][index].save(f'{dir_path}/{iteration}_rendered_img_NO_kps.png', bbox_inches='tight')
 
             dir_path = f'{path_to_save_img_per_iteration}/target_img_with_kps/{index}_pose'
             os.makedirs(dir_path, exist_ok=True)
             model_outputs["target_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_target_img_with_kps.png', bbox_inches='tight')
             
+            # This image is a PIL Object
             dir_path = f'{path_to_save_img_per_iteration}/target_img_NO_kps/{index}_pose'
             os.makedirs(dir_path, exist_ok=True)
-            model_outputs["target_img_NO_kps"][index].savefig(f'{dir_path}/{iteration}_target_img_NO_kps.png', bbox_inches='tight')
+            model_outputs["target_img_NO_kps"][index].save(f'{dir_path}/{iteration}_target_img_NO_kps.png', bbox_inches='tight')
             
             dir_path = f'{path_to_save_img_per_iteration}/cycle_consi/{index}_pose'
             os.makedirs(dir_path, exist_ok=True)
