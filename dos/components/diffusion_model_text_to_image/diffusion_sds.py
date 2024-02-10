@@ -41,12 +41,6 @@ def load_images(image_paths, size, device):
     return torch.stack(images).to(device)
 
 
-# TODO: move this inside the class
-device = torch.device("cuda:0")
-optimizer_class = torch.optim.SGD
-torch_dtype = torch.float16
-
-
 class DiffusionForTargetImg:
 
     def __init__(
@@ -67,13 +61,14 @@ class DiffusionForTargetImg:
         l2_image_period=1,
         guidance_scale=100,
         schedule="[600] * 50",
-        optimizer_class=optimizer_class,
-        torch_dtype=torch_dtype,
+        optimizer_class= torch.optim.SGD, # optimizer_class,
+        torch_dtype=torch.float16, #torch_dtype,
         image_fr_path=False,
         select_diffusion_option="sd",
         use_nfsd=False,
         dds=False,
         save_visuals_every_n_iter=2,
+        device = torch.device("cuda:0"),
     ):
 
         self.cache_dir = cache_dir
@@ -100,6 +95,7 @@ class DiffusionForTargetImg:
         self.select_diffusion_option = select_diffusion_option
         self.use_nfsd = use_nfsd
         self.save_visuals_every_n_iter = save_visuals_every_n_iter
+        self.device=device
 
         if init_image_path is not None:
             if isinstance(init_image_path, str):
@@ -107,14 +103,14 @@ class DiffusionForTargetImg:
         self.init_image_path = init_image_path
 
         if self.select_diffusion_option == "df":
-            self.df = DeepFloyd(device, cache_dir, torch_dtype=torch_dtype)
+            self.df = DeepFloyd(self.device, cache_dir, torch_dtype=torch_dtype)
         elif self.select_diffusion_option == "sd":
-            self.sd = StableDiffusion(device, cache_dir, torch_dtype=torch_dtype)
+            self.sd = StableDiffusion(self.device, cache_dir, torch_dtype=torch_dtype)
         elif self.select_diffusion_option == "sd_XL":
-            self.sd_XL = StableDiffusionXL(device, cache_dir, torch_dtype=torch_dtype)
+            self.sd_XL = StableDiffusionXL(self.device, cache_dir, torch_dtype=torch_dtype)
         elif self.select_diffusion_option == "sd_dds_loss":
             self.sd_dds_loss = StableDiffusionDDSLoss(
-                device, cache_dir, torch_dtype=torch_dtype
+                self.device, cache_dir, torch_dtype=torch_dtype
             )
         else:
             raise ValueError(
@@ -155,7 +151,7 @@ class DiffusionForTargetImg:
 
         if self.image_fr_path == True:
             if self.init_image_path is not None:
-                img = load_images(self.init_image_path, encoder_image_size, device)
+                img = load_images(self.init_image_path, encoder_image_size, self.device)
                 # prompts can be a list of string or a single string
                 n_prompts = 1 if isinstance(self.prompts, str) else len(self.prompts)
                 img = img.repeat(n_prompts, 1, 1, 1)
@@ -177,12 +173,12 @@ class DiffusionForTargetImg:
                 pred_rgb = (
                     torch.from_numpy(pred_rgb).float().permute(2, 0, 1) / 127.5 - 1
                 )
-                pred_rgb = pred_rgb.unsqueeze(0).to(device)
+                pred_rgb = pred_rgb.unsqueeze(0).to(self.device)
             else:
                 img = input_image.repeat(text_embeddings.shape[0] // 2, 1, 1, 1)
                 pred_rgb = img
 
-        pred_rgb = pred_rgb.to(device).detach().clone().requires_grad_(True)
+        pred_rgb = pred_rgb.to(self.device).detach().clone().requires_grad_(True)
 
         def image_to_latents(pred_rgb):
             pred_rgb_512 = F.interpolate(
