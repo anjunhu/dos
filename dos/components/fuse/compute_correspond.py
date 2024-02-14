@@ -18,7 +18,7 @@ import time
 
 class ComputeCorrespond:
         
-    def __init__(self, using_pil_object = False):
+    def __init__(self, using_pil_object = True):
         self.ONLY_DINO = False
         self.DINOV1 = False
         self.DINOV2 = False if self.DINOV1 else True
@@ -68,16 +68,6 @@ class ComputeCorrespond:
         if thresholds is not None:
             thresholds = torch.tensor(thresholds).to(self.device)
 
-        
-        # Load image 1
-        img1 = torch.nn.functional.interpolate(img1, size=(840, 840), mode='bilinear', align_corners=False).cpu()     # this is for DINO - img size used is 840*840
-        img1_input = torch.nn.functional.interpolate(img1, size=(960, 960), mode='bilinear', align_corners=False).cpu() # this is for sd - img size used is 960*960
-        # Load image 2
-        img2 = torch.nn.functional.interpolate(img2, size=(840, 840), mode='bilinear', align_corners=False).cpu()      # this is for DINO - img size used is 840*840
-        img2_input = torch.nn.functional.interpolate(img2.float(), size=(960, 960), mode='bilinear', align_corners=False)  # this is for sd - img size used is 960*960
-        img2_input = img2_input.half()
-        img2_input = img2_input.cpu()
-        
         if self.using_pil_object:
             # Load image 1
             img1_input = resize(img1, real_size, resize=True, to_pil=True, edge=self.EDGE_PAD) # this is for sd - img size used is 960*960
@@ -85,6 +75,15 @@ class ComputeCorrespond:
             # Load image 2
             img2_input = resize(img2, real_size, resize=True, to_pil=True, edge=self.EDGE_PAD)
             img2 = resize(img2, img_size, resize=True, to_pil=True, edge=self.EDGE_PAD)
+        else:
+            # Load image 1
+            img1 = torch.nn.functional.interpolate(img1, size=(840, 840), mode='bilinear', align_corners=False).cpu()     # this is for DINO - img size used is 840*840
+            img1_input = torch.nn.functional.interpolate(img1, size=(960, 960), mode='bilinear', align_corners=False).cpu() # this is for sd - img size used is 960*960
+            # Load image 2
+            img2 = torch.nn.functional.interpolate(img2, size=(840, 840), mode='bilinear', align_corners=False).cpu()      # this is for DINO - img size used is 840*840
+            img2_input = torch.nn.functional.interpolate(img2.float(), size=(960, 960), mode='bilinear', align_corners=False)  # this is for sd - img size used is 960*960
+            img2_input = img2_input.half()
+            img2_input = img2_input.cpu()
             
         # Get patch index for the keypoints
         img1_y = img1_kps[:, 1].cpu()           # ORIGINAL CODE                # img1_kps should be [(num of kps)20,2]

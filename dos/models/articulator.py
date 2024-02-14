@@ -1,6 +1,4 @@
 import random
-
-random.seed(42)
 import os
 # # Set TORCH_HOME to a custom directory
 # os.environ['TORCH_HOME'] = '/work/oishideb/cache/torch_hub'
@@ -48,7 +46,8 @@ class Articulator(BaseModel):
         path_to_save_images,
         num_pose,
         num_sample_bone_line,
-        mode_kps_selection,
+        num_sample_farthest_points = 100,
+        mode_kps_selection = "kps_fr_sample_on_bone_line",
         enable_texture_predictor=True,
         texture_predictor=None,
         bones_predictor=None,
@@ -70,6 +69,7 @@ class Articulator(BaseModel):
         self.path_to_save_images = path_to_save_images
         self.num_pose = num_pose
         self.num_sample_bone_line = num_sample_bone_line
+        self.num_sample_farthest_points = num_sample_farthest_points
         self.mode_kps_selection = mode_kps_selection
         self.enable_texture_predictor = enable_texture_predictor
         self.texture_predictor = (
@@ -171,7 +171,7 @@ class Articulator(BaseModel):
         if self.mode_kps_selection == "kps_fr_sample_on_bone_line":
             kps_img_resolu = self.kps_fr_sample_on_bone_line(bones, mvp, articulated_mesh, visible_vertices, self.num_sample_bone_line, eroded_mask)
         elif self.mode_kps_selection == "kps_fr_sample_farthest_points":
-            kps_img_resolu = self.kps_fr_sample_farthest_points(visible_vertices, articulated_mesh, eroded_mask)
+            kps_img_resolu = self.kps_fr_sample_farthest_points(rendered_image, mvp, visible_vertices, articulated_mesh, eroded_mask, self.num_sample_farthest_points)
         
         output_dict = {}
         corres_target_kps_tensor_stack = torch.empty(0, kps_img_resolu.shape[1], 2, device=kps_img_resolu.device)
@@ -183,19 +183,9 @@ class Articulator(BaseModel):
         cycle_consi_image_with_kps_list = []
         target_image_with_kps_list_after_cyc_check = []
         rendered_image_with_kps_list_after_cyc_check =[] 
-        # kps_img_resolu_list = []
-        # corres_target_kps_list = []
         
-        # rendered_image = nn_functional.interpolate(rendered_image, size=(840, 840), mode='bilinear', align_corners=False)
-        # target_image = nn_functional.interpolate(target_image, size=(840, 840), mode='bilinear', align_corners=False)
-
-        start_time = time.time()
-        target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image, img1_kps=kps_img_resolu, img2=target_image, model=self.sd_model, aug=self.sd_aug)
-        end_time = time.time()  # Record the end time
-        # with open('log.txt', 'a') as file:
-        #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
-        print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
-
+        rendered_image = nn_functional.interpolate(rendered_image, size=(840, 840), mode='bilinear', align_corners=False)
+        target_image = nn_functional.interpolate(target_image, size=(840, 840), mode='bilinear', align_corners=False)
         
         if self.using_pil_object:
             # kps_img_resolu shape is [20, 40, 2], [num_pose, num_kps, xy_coordinates]
@@ -223,6 +213,13 @@ class Articulator(BaseModel):
                 corres_target_kps_tensor_stack = torch.cat((corres_target_kps_tensor_stack, corres_target_kps.unsqueeze(0)), dim=0)
                 # Cycle Consistency KPs
                 cycle_consi_kps_tensor_stack = torch.cat((cycle_consi_kps_tensor_stack, cycle_consi_corres_kps.unsqueeze(0)), dim=0)
+        else:        
+            start_time = time.time()
+            target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image, img1_kps=kps_img_resolu, img2=target_image, model=self.sd_model, aug=self.sd_aug)
+            end_time = time.time()  # Record the end time
+            # with open('log.txt', 'a') as file:
+            #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
+            print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
             
         # LOSS CALCULATED AFTER CYCLE-CONSISTENCY CHECK
         # loss = nn_functional.mse_loss(kps_img_resolu, cycle_consi_kps_tensor_stack, reduction='mean')
@@ -249,8 +246,8 @@ class Articulator(BaseModel):
         # IF TRUE THEN SAVE CYCLE CONSISTENCY IMAGES
         if self.cycle_check_img_save:
             for index in range(kps_img_resolu.shape[0]):
-                rendered_image_with_kps_cyc_check = draw_correspondences_1_image(kps_img_resolu[index], rendered_image_PIL) #, color='yellow')              #[-6:]
-                target_image_with_kps_cyc_check = draw_correspondences_1_image(corres_target_kps_tensor_stack[index], target_image_PIL) #, color='yellow')              #[-6:]
+                rendered_image_with_kps_cyc_check = draw_correspondences_1_image(kps_img_resolu_filtered[index], rendered_image_PIL) #, color='yellow')              #[-6:]
+                target_image_with_kps_cyc_check = draw_correspondences_1_image(corres_target_kps_filtered[index], target_image_PIL) #, color='yellow')              #[-6:]
     
                 rendered_image_with_kps_list_after_cyc_check.append(rendered_image_with_kps_cyc_check)
                 target_image_with_kps_list_after_cyc_check.append(target_image_with_kps_cyc_check)
@@ -463,11 +460,7 @@ class Articulator(BaseModel):
         model_outputs["target_corres_kps"] = model_outputs["target_corres_kps"].to(self.device)
 
         loss = nn_functional.mse_loss(model_outputs["rendered_kps"], model_outputs["target_corres_kps"], reduction='mean')
-        
-        # print('model_outputs["target_corres_kps"] shape', model_outputs["target_corres_kps"].shape)
-        # print('model_outputs["rendered_kps"] Shape', model_outputs["rendered_kps"].shape)
-        # print('Loss from inside get_loss_dict function is: ', loss)
-        
+       
         return {"loss": loss}
 
     def get_visuals_dict(self, model_outputs, batch, num_visuals=1):
@@ -652,7 +645,7 @@ class Articulator(BaseModel):
         return kps_img_resolu
         
     
-    def kps_fr_sample_farthest_points(self, visible_vertices, articulated_mesh, eroded_mask):
+    def kps_fr_sample_farthest_points(self, rendered_image, mvp, visible_vertices, articulated_mesh, eroded_mask, num_samples):
             
         visible_v_coordinates_list = []
         # Loop over each batch
@@ -678,7 +671,7 @@ class Articulator(BaseModel):
         #### Sample farthest points
         visible_v_position = visible_v_position.permute(0,2,1)
         
-        num_samples = 100
+        # num_samples = 100
         visible_v_position = geometry_utils.sample_farthest_points(visible_v_position, num_samples)
         visible_v_position = visible_v_position.permute(0,2,1)
         
@@ -695,7 +688,7 @@ class Articulator(BaseModel):
         # projected_vertices.shape is torch.Size([4, 31070, 2]), # mvp is model-view-projection
         projected_vertices = geometry_utils.project_points(articulated_mesh.v_pos, mvp)  
         
-        projected_vertices = projected_vertices[:, :100, :]
+        projected_vertices = projected_vertices[:, :num_samples, :]
         kps_img = projected_vertices[:,:,:][0] * rendered_image.shape[2]
         
         return kps_img_resolu
