@@ -64,6 +64,7 @@ class Articulator(BaseModel):
         bones_rotations = "bones_rotations",
         debug_mode = False,
         using_pil_object = False,
+        cyclic_consi_check_on = True,
     ):
         super().__init__()
         self.path_to_save_images = path_to_save_images
@@ -80,7 +81,6 @@ class Articulator(BaseModel):
         )
         # Articulation predictor
         self.articulation_predictor = (articulation_predictor if articulation_predictor else ArticulationPredictor())
-        
         self.renderer = renderer if renderer is not None else Renderer()
 
         if shape_template_path is not None:
@@ -89,21 +89,15 @@ class Articulator(BaseModel):
             self.shape_template = None
         
         self.diffusion_Text_to_Target_Img = diffusion_Text_to_Target_Img if diffusion_Text_to_Target_Img is not None else DiffusionForTargetImg()
-        
         self.device = device
-        
         self.correspond = ComputeCorrespond()
-        
         self.view_option = view_option 
         self.random_camera_radius = random_camera_radius
-        
         self.cycle_check_img_save = cycle_check_img_save
-        
         self.bones_rotations = bones_rotations
-        
         self.debug_mode = debug_mode
-        
         self.using_pil_object = using_pil_object
+        self.cyclic_consi_check_on = cyclic_consi_check_on
         
         if debug_mode == False:
             # LOADING ODISE MODEL
@@ -246,6 +240,8 @@ class Articulator(BaseModel):
         # IF TRUE THEN SAVE CYCLE CONSISTENCY IMAGES
         if self.cycle_check_img_save:
             for index in range(kps_img_resolu.shape[0]):
+                rendered_image_PIL.save(f'{self.path_to_save_images}/{index}_rendered_image_PIL.png', bbox_inches='tight')
+                target_image_PIL.save(f'{self.path_to_save_images}/{index}_target_image_PIL.png', bbox_inches='tight')
                 rendered_image_with_kps_cyc_check = draw_correspondences_1_image(kps_img_resolu_filtered[index], rendered_image_PIL) #, color='yellow')              #[-6:]
                 target_image_with_kps_cyc_check = draw_correspondences_1_image(corres_target_kps_filtered[index], target_image_PIL) #, color='yellow')              #[-6:]
     
@@ -254,15 +250,21 @@ class Articulator(BaseModel):
                 
                 # SAVE CYCLE CONSISTENCY IMAGES
                 self.save_cyc_consi_check_images(cycle_consi_image_with_kps, rendered_image_with_kps_cyc_check, target_image_with_kps_cyc_check, index)
-                
         
+        if self.cyclic_consi_check_on:
+            kps_img_resolu = kps_img_resolu_filtered
+            corres_target_kps_tensor_stack = corres_target_kps_filtered
+        else:
+            kps_img_resolu = kps_img_resolu
+            corres_target_kps_tensor_stack = corres_target_kps_tensor_stack
+                
         output_dict = {
-        "rendered_kps": kps_img_resolu_filtered,                     # torch.stack(padded_kps_img_resolu_list),
+        "rendered_kps": kps_img_resolu,                     # torch.stack(padded_kps_img_resolu_list),
+        "target_corres_kps": corres_target_kps_tensor_stack,             # torch.stack(padded_corres_target_kps_list),
         "rendered_image_with_kps": rendered_image_with_kps_list,
         "target_image_with_kps": target_image_with_kps_list,
         "target_img_NO_kps": target_image_NO_kps_list,
         "rendered_img_NO_kps": rendered_image_NO_kps_list,
-        "target_corres_kps": corres_target_kps_filtered,               # torch.stack(padded_corres_target_kps_list), 
         "cycle_consi_image_with_kps": cycle_consi_image_with_kps_list,
         "rendered_image_with_kps_list_after_cyc_check": rendered_image_with_kps_list_after_cyc_check,
         "target_image_with_kps_list_after_cyc_check": target_image_with_kps_list_after_cyc_check,
