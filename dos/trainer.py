@@ -224,6 +224,12 @@ class Trainer:
                         
             for index, visual in enumerate(model_outputs['target_image_with_kps']):
                 neptune_run[log_prefix + "/target_image_with_kps_"+ str(index)].append(visual, step=iteration)  
+                
+            for index, visual in enumerate(model_outputs['rendered_image_with_kps_list_after_cyc_check']):
+                neptune_run[log_prefix + "/rendered_image_with_kps_list_after_cyc_check_"+ str(index)].append(visual, step=iteration) 
+            
+            for index, visual in enumerate(model_outputs['target_image_with_kps_list_after_cyc_check']):
+                neptune_run[log_prefix + "/target_image_with_kps_list_after_cyc_check"+ str(index)].append(visual, step=iteration)
             
             end_time = time.time()  # Record the end time
             with open('log.txt', 'a') as file:
