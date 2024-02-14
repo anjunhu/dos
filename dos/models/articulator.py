@@ -64,6 +64,7 @@ class Articulator(BaseModel):
         cycle_check_img_save = False,
         bones_rotations = "bones_rotations",
         debug_mode = False,
+        using_pil_object = False,
     ):
         super().__init__()
         self.path_to_save_images = path_to_save_images
@@ -101,6 +102,8 @@ class Articulator(BaseModel):
         self.bones_rotations = bones_rotations
         
         self.debug_mode = debug_mode
+        
+        self.using_pil_object = using_pil_object
         
         if debug_mode == False:
             # LOADING ODISE MODEL
@@ -183,38 +186,50 @@ class Articulator(BaseModel):
         # kps_img_resolu_list = []
         # corres_target_kps_list = []
         
-        rendered_image = nn_functional.interpolate(rendered_image, size=(840, 840), mode='bilinear', align_corners=False)
-        target_image = nn_functional.interpolate(target_image, size=(840, 840), mode='bilinear', align_corners=False)
+        # rendered_image = nn_functional.interpolate(rendered_image, size=(840, 840), mode='bilinear', align_corners=False)
+        # target_image = nn_functional.interpolate(target_image, size=(840, 840), mode='bilinear', align_corners=False)
 
-        # kps_img_resolu shape is [20, 40, 2], [num_pose, num_kps, xy_coordinates]
-        for index, kps_1_batch in enumerate(kps_img_resolu):
+        start_time = time.time()
+        target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image, img1_kps=kps_img_resolu, img2=target_image, model=self.sd_model, aug=self.sd_aug)
+        end_time = time.time()  # Record the end time
+        # with open('log.txt', 'a') as file:
+        #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
+        print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
 
-            rendered_image_PIL = F.to_pil_image(rendered_image[index])
-            target_image_PIL = F.to_pil_image(target_image[index])
+        
+        if self.using_pil_object:
+            # kps_img_resolu shape is [20, 40, 2], [num_pose, num_kps, xy_coordinates]
+            for index, kps_1_batch in enumerate(kps_img_resolu):
 
-            start_time = time.time()
-            target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_1_batch, img2=target_image_PIL, model=self.sd_model, aug=self.sd_aug)
-            end_time = time.time()  # Record the end time
-            # with open('log.txt', 'a') as file:
-            #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
-            print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
+                rendered_image_PIL = F.to_pil_image(rendered_image[index])
+                target_image_PIL = F.to_pil_image(target_image[index])
 
-            rendered_image_with_kps = draw_correspondences_1_image(kps_1_batch, rendered_image_PIL) #, color='yellow')            
-            
-            rendered_image_with_kps_list.append(rendered_image_with_kps)
-            rendered_image_NO_kps_list.append(rendered_image_PIL)
-            target_image_with_kps_list.append(target_image_with_kps)
-            target_image_NO_kps_list.append(target_image_PIL)
-            cycle_consi_image_with_kps_list.append(cycle_consi_image_with_kps)
-            
-            corres_target_kps_tensor_stack = torch.cat((corres_target_kps_tensor_stack, corres_target_kps.unsqueeze(0)), dim=0)
-            cycle_consi_kps_tensor_stack = torch.cat((cycle_consi_kps_tensor_stack, cycle_consi_corres_kps.unsqueeze(0)), dim=0)
+                start_time = time.time()
+                target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_1_batch, img2=target_image_PIL, model=self.sd_model, aug=self.sd_aug)
+                end_time = time.time()  # Record the end time
+                # with open('log.txt', 'a') as file:
+                #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
+                print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
+
+                rendered_image_with_kps = draw_correspondences_1_image(kps_1_batch, rendered_image_PIL) #, color='yellow')            
+
+                rendered_image_with_kps_list.append(rendered_image_with_kps)
+                rendered_image_NO_kps_list.append(rendered_image_PIL)
+                target_image_with_kps_list.append(target_image_with_kps)
+                target_image_NO_kps_list.append(target_image_PIL)
+                cycle_consi_image_with_kps_list.append(cycle_consi_image_with_kps)
+
+                # Correspondences (Target KPs)
+                corres_target_kps_tensor_stack = torch.cat((corres_target_kps_tensor_stack, corres_target_kps.unsqueeze(0)), dim=0)
+                # Cycle Consistency KPs
+                cycle_consi_kps_tensor_stack = torch.cat((cycle_consi_kps_tensor_stack, cycle_consi_corres_kps.unsqueeze(0)), dim=0)
             
         # LOSS CALCULATED AFTER CYCLE-CONSISTENCY CHECK
         # loss = nn_functional.mse_loss(kps_img_resolu, cycle_consi_kps_tensor_stack, reduction='mean')
         # draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
         # plt.text(80, 0.95, f' Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
-            
+        
+        
         # REMOVING POINTS FOLLOWING CYCLE CONSISTENCY CHECK
         # Calculate the difference
         difference = torch.abs(kps_img_resolu - cycle_consi_kps_tensor_stack)

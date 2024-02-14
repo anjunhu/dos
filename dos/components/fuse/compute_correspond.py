@@ -18,7 +18,7 @@ import time
 
 class ComputeCorrespond:
         
-    def __init__(self):
+    def __init__(self, using_pil_object = False):
         self.ONLY_DINO = False
         self.DINOV1 = False
         self.DINOV2 = False if self.DINOV1 else True
@@ -40,6 +40,7 @@ class ComputeCorrespond:
         self.PCA_DIMS = [256, 256, 256]
         self.WEIGHT = [1, 1, 1, 1, 1]
         self.MASK = False
+        self.using_pil_object = using_pil_object
         
         self.start_time = time.time()
         self.extractor = ViTExtractor(self.model_type, self.stride, device=self.device)
@@ -67,10 +68,24 @@ class ComputeCorrespond:
         if thresholds is not None:
             thresholds = torch.tensor(thresholds).to(self.device)
 
-        # Load image 1
-        img1_input = resize(img1, real_size, resize=True, to_pil=True, edge=self.EDGE_PAD) # this is for sd - img size used is 960*960
-        img1 = resize(img1, img_size, resize=True, to_pil=True, edge=self.EDGE_PAD)        # this is for DINO - img size used is 840*840
         
+        # Load image 1
+        img1 = torch.nn.functional.interpolate(img1, size=(840, 840), mode='bilinear', align_corners=False).cpu()     # this is for DINO - img size used is 840*840
+        img1_input = torch.nn.functional.interpolate(img1, size=(960, 960), mode='bilinear', align_corners=False).cpu() # this is for sd - img size used is 960*960
+        # Load image 2
+        img2 = torch.nn.functional.interpolate(img2, size=(840, 840), mode='bilinear', align_corners=False).cpu()      # this is for DINO - img size used is 840*840
+        img2_input = torch.nn.functional.interpolate(img2.float(), size=(960, 960), mode='bilinear', align_corners=False)  # this is for sd - img size used is 960*960
+        img2_input = img2_input.half()
+        img2_input = img2_input.cpu()
+        
+        if self.using_pil_object:
+            # Load image 1
+            img1_input = resize(img1, real_size, resize=True, to_pil=True, edge=self.EDGE_PAD) # this is for sd - img size used is 960*960
+            img1 = resize(img1, img_size, resize=True, to_pil=True, edge=self.EDGE_PAD)        # this is for DINO - img size used is 840*840
+            # Load image 2
+            img2_input = resize(img2, real_size, resize=True, to_pil=True, edge=self.EDGE_PAD)
+            img2 = resize(img2, img_size, resize=True, to_pil=True, edge=self.EDGE_PAD)
+            
         # Get patch index for the keypoints
         img1_y = img1_kps[:, 1].cpu()           # ORIGINAL CODE                # img1_kps should be [(num of kps)20,2]
         img1_x = img1_kps[:, 0].cpu()           # ORIGINAL CODE                # img1_kps should be [(num of kps)20,2]                    
@@ -79,10 +94,6 @@ class ComputeCorrespond:
         img1_x_patch = (num_patches / img_size * img1_x).astype(np.int32)
         img1_patch_idx = num_patches * img1_y_patch + img1_x_patch
         
-        # Load image 2
-        img2_input = resize(img2, real_size, resize=True, to_pil=True, edge=self.EDGE_PAD)
-        
-        img2 = resize(img2, img_size, resize=True, to_pil=True, edge=self.EDGE_PAD)
         
         with torch.no_grad():
             if not self.CO_PCA:
@@ -140,15 +151,14 @@ class ComputeCorrespond:
                 if self.FUSE_DINO:
                     # This extracts the DINOv2 features
                     # print('Its using FUSE_DINO and CO_PCA') # ->  this is run when used FUSE = sd + DINOv2
-                    start_time = time.time()
-                    img1_batch = self.extractor.preprocess_pil(img1)    # time_taken: 0.0072109 sec              # img1_batch shape is torch.Size([1, 3, 840, 840])
-                    end_time = time.time()
-                    # # Open a file in append mode
-                    # with open('log.txt', 'a') as file:
-                    #     file.write(f"The DINOV2 extractor.preprocess_pil function for img1 took {end_time - start_time} seconds to run.\n")
                     
-                    print(f"The DINOV2 extractor.preprocess_pil function for img1 took {end_time - start_time} seconds to run.")
-                    
+                    if self.using_pil_object:
+                        img1_batch = self.extractor.preprocess_pil(img1)    # time_taken: 0.0072109 sec       # img1_batch shape is torch.Size([1, 3, 840, 840])
+                        img2_batch = self.extractor.preprocess_pil(img2)                                      # img2_batch shape is torch.Size([1, 3, 840, 840])
+                    else:
+                        img1_batch = img1
+                        img2_batch = img2
+                        
                     start_time = time.time()
                     img1_desc_dino = self.extractor.extract_descriptors(img1_batch.to(self.device), layer, facet)     # img1_desc_dino shape is torch.Size([1, 1, 3600, 768])
                     end_time = time.time()
@@ -156,8 +166,7 @@ class ComputeCorrespond:
                     # with open('log.txt', 'a') as file:
                     #     file.write(f"The DINOV2 extractor.extract_descriptors function for img1 took {end_time - start_time} seconds to run.\n")
                     print(f"The DINOV2 extractor.extract_descriptors function for img1 took {end_time - start_time} seconds to run.")
-                    
-                    img2_batch = self.extractor.preprocess_pil(img2)                                             # img2_batch shape is torch.Size([1, 3, 840, 840])
+                                                                
                     
                     start_time = time.time()
                     img2_desc_dino = self.extractor.extract_descriptors(img2_batch.to(self.device), layer, facet)     # img2_desc_dino shape is torch.Size([1, 1, 3600, 768])

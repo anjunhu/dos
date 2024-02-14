@@ -86,6 +86,9 @@ class StableDiffusionSeg(object):
                 the output of the model for one image only.
         """
         height, width = original_image.shape[:2]
+        
+        import ipdb; ipdb.set_trace()
+        
         aug_input = T.AugInput(original_image, sem_seg=None)
         self.aug(aug_input)
         image = aug_input.image
@@ -319,13 +322,9 @@ def pca_process(features):
     return features
     
 
-#def process_features_and_mask(model, aug, image, category=None, input_text=None, mask=True, pca=False, raw=False):
-
-def process_features_and_mask(model, aug, input_image_1, input_image_2, category=None, input_text=None, mask=True, pca=False, raw=False):
-
-    # input_image = image
-    # Added
-    input_image = input_image_1
+def process_features_and_mask(model, aug, image, category=None, input_text=None, mask=True, pca=False, raw=False):
+    
+    input_image = image
     
     caption = input_text
     vocab = ""
@@ -340,26 +339,15 @@ def process_features_and_mask(model, aug, input_image_1, input_image_2, category
         category=category_convert_dict[category]
     elif type(category) is list:
         category=[category_convert_dict[cat] if cat in category_convert_dict else cat for cat in category]
-    # features = get_features(model, aug, input_image, vocab, label_list, caption, pca=(pca or raw))
-    
-    # Updated
-    features_1 = get_features(model, aug, input_image_1, vocab, label_list, caption, pca=(pca or raw))
-    features_2 = get_features(model, aug, input_image_2, vocab, label_list, caption, pca=(pca or raw))
+    features = get_features(model, aug, input_image, vocab, label_list, caption, pca=(pca or raw))
     
     if pca:
-        # features = pca_process(features)
-        
-        # Updated
-        features_1 = pca_process(features_1)
-        features_2 = pca_process(features_2)
+        features = pca_process(features)
     if raw:
         # return features
         return features_1, features_2
     
-    # features_gether_s4_s5 = torch.cat([features['s4'], F.interpolate(features['s5'], size=(features['s4'].shape[-2:]), mode='bilinear')], dim=1)
-    
-    features_gether_s4_s5_image_1 = torch.cat([features_1['s4'], F.interpolate(features_1['s5'], size=(features_1['s4'].shape[-2:]), mode='bilinear')], dim=1)
-    features_gether_s4_s5_image_2 = torch.cat([features_2['s4'], F.interpolate(features_2['s5'], size=(features_2['s4'].shape[-2:]), mode='bilinear')], dim=1)
+    features_gether_s4_s5 = torch.cat([features['s4'], F.interpolate(features['s5'], size=(features['s4'].shape[-2:]), mode='bilinear')], dim=1)
     
     if mask:
         print('mask is True')
@@ -383,8 +371,7 @@ def process_features_and_mask(model, aug, input_image_1, input_image_2, category
         # set where mask is 0 to inf
         features_gether_s4_s5[(binary_seg_map == 0).repeat(1,features_gether_s4_s5.shape[1],1,1)] = -1
 
-    # return features_gether_s4_s5
-    return features_gether_s4_s5_image_1, features_gether_s4_s5_image_2
+    return features_gether_s4_s5
 
 
 def get_mask(model, aug, image, category=None, input_text=None):
