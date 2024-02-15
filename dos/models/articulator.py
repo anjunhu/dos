@@ -191,7 +191,7 @@ class Articulator(BaseModel):
                 target_image_PIL = F.to_pil_image(target_image[index])
 
                 start_time = time.time()
-                target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_1_batch, img2=target_image_PIL, model=self.sd_model, aug=self.sd_aug)
+                target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_1_batch, img2=target_image_PIL, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
                 end_time = time.time()  # Record the end time
                 # with open('log.txt', 'a') as file:
                 #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
@@ -211,7 +211,7 @@ class Articulator(BaseModel):
                 cycle_consi_kps_tensor_stack = torch.cat((cycle_consi_kps_tensor_stack, cycle_consi_corres_kps.unsqueeze(0)), dim=0)
         else:        
             start_time = time.time()
-            target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image, img1_kps=kps_img_resolu, img2=target_image, model=self.sd_model, aug=self.sd_aug)
+            target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image, img1_kps=kps_img_resolu, img2=target_image, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
             end_time = time.time()  # Record the end time
             # with open('log.txt', 'a') as file:
             #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
