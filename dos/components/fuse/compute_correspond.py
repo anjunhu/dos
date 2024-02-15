@@ -18,7 +18,7 @@ import time
 
 class ComputeCorrespond:
         
-    def __init__(self, using_pil_object = True):
+    def __init__(self):
         self.ONLY_DINO = False
         self.DINOV1 = False
         self.DINOV2 = False if self.DINOV1 else True
@@ -40,7 +40,7 @@ class ComputeCorrespond:
         self.PCA_DIMS = [256, 256, 256]
         self.WEIGHT = [1, 1, 1, 1, 1]
         self.MASK = False
-        self.using_pil_object = using_pil_object
+        # self.using_pil_object = using_pil_object
         
         self.start_time = time.time()
         self.extractor = ViTExtractor(self.model_type, self.stride, device=self.device)
@@ -48,7 +48,7 @@ class ComputeCorrespond:
         print(f'The ViTExtractor function took {self.end_time - self.start_time} seconds to run.')
 
       
-    def compute_correspondences_sd_dino(self, img1, img1_kps, img2, model, aug, index=0, files=None, category='horse', mask=False, dist='l2', thresholds=None, real_size=960):  # kps,
+    def compute_correspondences_sd_dino(self, img1, img1_kps, img2, model, aug, using_pil_object, index=0, files=None, category='horse', mask=False, dist='l2', thresholds=None, real_size=960):  # kps,
         # print('compute_correspondences func is running...')
         
         img_size = 840 if self.DINOV2 else 240 if self.ONLY_DINO else 480    # ORIGINAL CODE # should it be 224 or 240, because 60 * stride(i.e 4) is 240
@@ -68,7 +68,7 @@ class ComputeCorrespond:
         if thresholds is not None:
             thresholds = torch.tensor(thresholds).to(self.device)
 
-        if self.using_pil_object:
+        if using_pil_object:
             # Load image 1
             img1_input = resize(img1, real_size, resize=True, to_pil=True, edge=self.EDGE_PAD) # this is for sd - img size used is 960*960
             img1 = resize(img1, img_size, resize=True, to_pil=True, edge=self.EDGE_PAD)        # this is for DINO - img size used is 840*840
@@ -151,7 +151,7 @@ class ComputeCorrespond:
                     # This extracts the DINOv2 features
                     # print('Its using FUSE_DINO and CO_PCA') # ->  this is run when used FUSE = sd + DINOv2
                     
-                    if self.using_pil_object:
+                    if using_pil_object:
                         img1_batch = self.extractor.preprocess_pil(img1)    # time_taken: 0.0072109 sec       # img1_batch shape is torch.Size([1, 3, 840, 840])
                         img2_batch = self.extractor.preprocess_pil(img2)                                      # img2_batch shape is torch.Size([1, 3, 840, 840])
                     else:
