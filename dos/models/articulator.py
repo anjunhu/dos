@@ -60,11 +60,12 @@ class Articulator(BaseModel):
         # TODO: Create a view sampler class to encapsulate the view sampling logic and settings
         view_option = "multi_view_azimu",
         random_camera_radius=[2.5, 2.5],
-        cycle_check_img_save = False,
+        cyc_check_img_save = False,
         bones_rotations = "bones_rotations",
         debug_mode = False,
         using_pil_object = False,
         cyclic_consi_check_on = True,
+        cyc_consi_check_dist_threshold = 15,
     ):
         super().__init__()
         self.path_to_save_images = path_to_save_images
@@ -93,11 +94,12 @@ class Articulator(BaseModel):
         self.correspond = ComputeCorrespond()
         self.view_option = view_option 
         self.random_camera_radius = random_camera_radius
-        self.cycle_check_img_save = cycle_check_img_save
+        self.cyc_check_img_save = cyc_check_img_save
         self.bones_rotations = bones_rotations
         self.debug_mode = debug_mode
         self.using_pil_object = using_pil_object
         self.cyclic_consi_check_on = cyclic_consi_check_on
+        self.cyc_consi_check_dist_threshold = cyc_consi_check_dist_threshold
         
         if debug_mode == False:
             # LOADING ODISE MODEL
@@ -215,30 +217,36 @@ class Articulator(BaseModel):
             #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
             print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
             
-        # LOSS CALCULATED AFTER CYCLE-CONSISTENCY CHECK
-        # loss = nn_functional.mse_loss(kps_img_resolu, cycle_consi_kps_tensor_stack, reduction='mean')
-        # draw.text((50, 50), f"L1 Loss:{loss}", fill='orange', font = font)
-        # plt.text(80, 0.95, f' Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
-        
-        
-        # REMOVING POINTS FOLLOWING CYCLE CONSISTENCY CHECK
-        # Calculate the difference
-        difference = torch.abs(kps_img_resolu - cycle_consi_kps_tensor_stack)
-        # Find the points where the difference is less than or equal to 2
-        mask = torch.all(difference <= 15, dim=2)
-        # Expanding mask to make it compatible for broadcasting
-        mask_expanded = mask.unsqueeze(-1) 
-        
-        # Use the mask to zero out points
-        # We multiply the mask with the keypoints. However, since the mask is Boolean, we first need to convert it to the same dtype as kps_img_resolu
-        kps_img_resolu_filtered = kps_img_resolu * mask_expanded.type_as(kps_img_resolu)
+            
+        # IF TRUE, REMOVE POINTS FOLLOWING CYCLE CONSISTENCY CHECK
+        if self.cyclic_consi_check_on:
+            # Calculate the squared difference along the coordinate dimension (dim=2)
+            squared_diff = torch.pow(kps_img_resolu - cycle_consi_kps_tensor_stack, 2)
 
-        # Update the Target kps after CYCLE CONSISTENCY CHECK
-        corres_target_kps_filtered = corres_target_kps_tensor_stack * mask_expanded.type_as(corres_target_kps_tensor_stack)
-        
+            # Sum the squared differences along the coordinate dimension to get the squared Euclidean distance
+            squared_distances = torch.sum(squared_diff, dim=2)
+
+            # Take the square root to get the Euclidean distance
+            euclidean_distances = torch.sqrt(squared_distances)
+
+            # Create a mask where the Euclidean distance is less than or equal to cyc_consi_check_dist_threshold
+            mask = euclidean_distances <= self.cyc_consi_check_dist_threshold
+
+            # Expanding mask to make it compatible for broadcasting
+            mask_expanded = mask.unsqueeze(-1) 
+
+            # Use the mask to zero out points
+            # We multiply the mask with the keypoints. However, since the mask is Boolean, we first need to convert it to the same dtype as kps_img_resolu
+            kps_img_resolu_filtered = kps_img_resolu * mask_expanded.to(kps_img_resolu.dtype)
+
+            # Update the Target kps after CYCLE CONSISTENCY CHECK
+            corres_target_kps_filtered = corres_target_kps_tensor_stack * mask_expanded.to(corres_target_kps_tensor_stack.dtype)
+
+            kps_img_resolu = kps_img_resolu_filtered
+            corres_target_kps_tensor_stack = corres_target_kps_filtered
         
         # IF TRUE THEN SAVE CYCLE CONSISTENCY IMAGES
-        if self.cycle_check_img_save:
+        if self.cyc_check_img_save:
             for index in range(kps_img_resolu.shape[0]):
                 rendered_image_PIL.save(f'{self.path_to_save_images}/{index}_rendered_image_PIL.png', bbox_inches='tight')
                 target_image_PIL.save(f'{self.path_to_save_images}/{index}_target_image_PIL.png', bbox_inches='tight')
@@ -251,16 +259,10 @@ class Articulator(BaseModel):
                 # SAVE CYCLE CONSISTENCY IMAGES
                 self.save_cyc_consi_check_images(cycle_consi_image_with_kps, rendered_image_with_kps_cyc_check, target_image_with_kps_cyc_check, index)
         
-        if self.cyclic_consi_check_on:
-            kps_img_resolu = kps_img_resolu_filtered
-            corres_target_kps_tensor_stack = corres_target_kps_filtered
-        else:
-            kps_img_resolu = kps_img_resolu
-            corres_target_kps_tensor_stack = corres_target_kps_tensor_stack
                 
         output_dict = {
-        "rendered_kps": kps_img_resolu,                     # torch.stack(padded_kps_img_resolu_list),
-        "target_corres_kps": corres_target_kps_tensor_stack,             # torch.stack(padded_corres_target_kps_list),
+        "rendered_kps": kps_img_resolu,                     
+        "target_corres_kps": corres_target_kps_tensor_stack,         
         "rendered_image_with_kps": rendered_image_with_kps_list,
         "target_image_with_kps": target_image_with_kps_list,
         "target_img_NO_kps": target_image_NO_kps_list,
@@ -557,7 +559,7 @@ class Articulator(BaseModel):
             os.makedirs(dir_path, exist_ok=True)
             model_outputs["cycle_consi_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_cycle_consi.png', bbox_inches='tight')
 
-            if self.cycle_check_img_save:
+            if self.cyc_check_img_save:
                 dir_path = f'{path_to_save_img_per_iteration}/rendered_image_with_kps_list_after_cyc_check/{index}_pose'
                 os.makedirs(dir_path, exist_ok=True)
                 model_outputs["rendered_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_rendered_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
@@ -862,7 +864,7 @@ class Articulator(BaseModel):
         # plt.gcf().set_facecolor('grey')
         # plt.text(80, 0.95, f'Cycle Consistency', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
         cycle_consi_image_with_kps.savefig(f'{self.path_to_save_images}/{index}_cycle.png', bbox_inches='tight')
-        plt.text(30, 0.95, f'Final Rendered Img after Eroded Mask & Cycle Consi Check', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
+        plt.text(30, 0.95, f'Final Img after Eroded Mask & Cycle Consi Check', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
         ## For now commented Loss printout
         ## plt.text(80, 40, f'Loss: {loss}', verticalalignment='top', horizontalalignment='left', color = 'orange', fontsize ='11')
         rendered_image_with_kps_cyc_check.savefig(f'{self.path_to_save_images}/{index}_rendered_image_with_kps_after_cyclic_check.png', bbox_inches='tight')
