@@ -149,12 +149,12 @@ class ComputeCorrespond:
                     if self.FUSE_DINO:
                         # This extracts the DINOv2 features
                         # print('Its using FUSE_DINO and CO_PCA') # ->  this is run when used FUSE = sd + DINOv2
-                        if using_pil_object:
-                            img1_batch = self.extractor.preprocess_pil(img1)    # time_taken: 0.0072109 sec       # img1_batch shape is torch.Size([1, 3, 840, 840])
-                            img2_batch = self.extractor.preprocess_pil(img2)                                      # img2_batch shape is torch.Size([1, 3, 840, 840])
-                        else:
-                            img1_batch = img1
-                            img2_batch = img2
+                        # if using_pil_object:
+                        img1_batch = self.extractor.preprocess_pil(img1)    # time_taken: 0.0072109 sec       # img1_batch shape is torch.Size([1, 3, 840, 840])
+                        img2_batch = self.extractor.preprocess_pil(img2)                                      # img2_batch shape is torch.Size([1, 3, 840, 840])
+                        # else:
+                        #     img1_batch = img1
+                        #     img2_batch = img2
                         start_time = time.time()
                         img1_desc_dino = self.extractor.extract_descriptors(img1_batch.to(self.device), layer, facet)     # img1_desc_dino shape is torch.Size([1, 1, 3600, 768])
                         end_time = time.time()
