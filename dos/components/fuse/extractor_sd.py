@@ -77,25 +77,51 @@ class StableDiffusionSeg(object):
         self.instance_mode = instance_mode
 
     def get_features(self, original_image, caption=None, pca=None):
-        """
-        Args:
-            original_image (np.ndarray): an image of shape (H, W, C) (in BGR order).
+        
+        # Added
+        batch_compute = False
+        if batch_compute:
+            inputs_batch = []
+            for i, original_image in enumerate(original_image):
+                height, width = original_image.shape[:2]
 
-        Returns:
-            features (dict):
-                the output of the model for one image only.
-        """
-        height, width = original_image.shape[:2]
-        aug_input = T.AugInput(original_image, sem_seg=None)
-        self.aug(aug_input)
-        image = aug_input.image
-        image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
+                aug_input = T.AugInput(original_image, sem_seg=None)
+                self.aug(aug_input)
+                image = aug_input.image
+                image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
 
-        inputs = {"image": image, "height": height, "width": width}
-        if caption is not None:
-            features = self.model.get_features([inputs],caption,pca=pca)
+                inputs = {"image": image, "height": height, "width": width}
+                if caption is not None:
+                    inputs["caption"] = caption[i]
+                inputs_batch.append(inputs)
+
+            if caption is not None:
+                # FIXME: Getting error when the input is a batch to Odise model
+                features = self.model.get_features(inputs_batch, pca=pca)
+            else:
+                features = self.model.get_features(inputs_batch, pca=pca)
         else:
-            features = self.model.get_features([inputs],pca=pca)
+            """
+            Args:
+                original_image (np.ndarray): an image of shape (H, W, C) (in BGR order).
+
+            Returns:
+                features (dict):
+                    the output of the model for one image only.
+            """
+            # Original code
+            height, width = original_image.shape[:2]
+            aug_input = T.AugInput(original_image, sem_seg=None)
+            self.aug(aug_input)
+            image = aug_input.image
+            image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
+
+            inputs = {"image": image, "height": height, "width": width}
+            if caption is not None:
+                features = self.model.get_features([inputs],caption,pca=pca)
+            else:
+                features = self.model.get_features([inputs],pca=pca)
+                
         return features
     
     def predict(self, original_image):

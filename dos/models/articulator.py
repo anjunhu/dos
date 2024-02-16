@@ -180,43 +180,49 @@ class Articulator(BaseModel):
         target_image_with_kps_list_after_cyc_check = []
         rendered_image_with_kps_list_after_cyc_check =[] 
         
-        rendered_image = nn_functional.interpolate(rendered_image, size=(840, 840), mode='bilinear', align_corners=False)
-        target_image = nn_functional.interpolate(target_image, size=(840, 840), mode='bilinear', align_corners=False)
+        # rendered_image = nn_functional.interpolate(rendered_image, size=(840, 840), mode='bilinear', align_corners=False)
+        # target_image = nn_functional.interpolate(target_image, size=(840, 840), mode='bilinear', align_corners=False)
         
-        if self.using_pil_object:
-            # kps_img_resolu shape is [20, 40, 2], [num_pose, num_kps, xy_coordinates]
-            for index, kps_1_batch in enumerate(kps_img_resolu):
-
-                rendered_image_PIL = F.to_pil_image(rendered_image[index])
-                target_image_PIL = F.to_pil_image(target_image[index])
-
-                start_time = time.time()
-                target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image_PIL, img1_kps=kps_1_batch, img2=target_image_PIL, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
-                end_time = time.time()  # Record the end time
-                # with open('log.txt', 'a') as file:
-                #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
-                print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
-
-                rendered_image_with_kps = draw_correspondences_1_image(kps_1_batch, rendered_image_PIL) #, color='yellow')            
-
-                rendered_image_with_kps_list.append(rendered_image_with_kps)
-                rendered_image_NO_kps_list.append(rendered_image_PIL)
-                target_image_with_kps_list.append(target_image_with_kps)
-                target_image_NO_kps_list.append(target_image_PIL)
-                cycle_consi_image_with_kps_list.append(cycle_consi_image_with_kps)
-
-                # Correspondences (Target KPs)
-                corres_target_kps_tensor_stack = torch.cat((corres_target_kps_tensor_stack, corres_target_kps.unsqueeze(0)), dim=0)
-                # Cycle Consistency KPs
-                cycle_consi_kps_tensor_stack = torch.cat((cycle_consi_kps_tensor_stack, cycle_consi_corres_kps.unsqueeze(0)), dim=0)
-        else:        
+        if self.cyclic_consi_check_on:
             start_time = time.time()
-            target_image_with_kps, corres_target_kps, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1=rendered_image, img1_kps=kps_img_resolu, img2=target_image, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
+            target_image_with_kps, corres_target_kps_tensor_stack, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1_tensor=rendered_image, img1_kps=kps_img_resolu, img2_tensor=target_image, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
             end_time = time.time()  # Record the end time
             # with open('log.txt', 'a') as file:
             #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
             print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
+        else:
+            start_time = time.time()
+            target_image_with_kps, corres_target_kps_tensor_stack  = self.correspond.compute_correspondences_sd_dino(img1_tensor=rendered_image, img1_kps=kps_img_resolu, img2_tensor=target_image, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
+            end_time = time.time()  # Record the end time
+            # with open('log.txt', 'a') as file:
+            #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
+            print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")      
+        
+        for index in range(kps_img_resolu.shape[0]):
             
+            rendered_image_PIL = F.to_pil_image(rendered_image[index])   
+            rendered_image_PIL = resize(rendered_image_PIL, 840, resize=True, to_pil=True)
+            target_image_PIL = F.to_pil_image(target_image[index])
+            target_image_PIL = resize(target_image_PIL, 840, resize=True, to_pil=True)
+            
+            rendered_image_with_kps = draw_correspondences_1_image(kps_img_resolu[index], rendered_image_PIL) 
+
+            rendered_image_with_kps_list.append(rendered_image_with_kps)
+            rendered_image_NO_kps_list.append(rendered_image_PIL)
+            
+            target_image_with_kps_list.append(target_image_with_kps)
+            target_image_NO_kps_list.append(target_image_PIL)
+            
+            # # Correspondences (Target KPs)
+            # corres_target_kps_tensor_stack = torch.cat((corres_target_kps_tensor_stack, corres_target_kps.squeeze(0)), dim=0)
+            
+            if self.cyclic_consi_check_on:
+                # Cycle Consistency Images
+                cycle_consi_image_with_kps_list.append(cycle_consi_image_with_kps)
+                # Cycle Consistency KPs
+                cycle_consi_kps_tensor_stack = torch.cat((cycle_consi_kps_tensor_stack, cycle_consi_corres_kps.squeeze(0)), dim=0)
+
+        
             
         # IF TRUE, REMOVE POINTS FOLLOWING CYCLE CONSISTENCY CHECK
         if self.cyclic_consi_check_on:
@@ -245,21 +251,21 @@ class Articulator(BaseModel):
             kps_img_resolu = kps_img_resolu_filtered
             corres_target_kps_tensor_stack = corres_target_kps_filtered
         
-        # IF TRUE THEN SAVE CYCLE CONSISTENCY IMAGES
-        if self.cyc_check_img_save:
-            for index in range(kps_img_resolu.shape[0]):
-                rendered_image_PIL.save(f'{self.path_to_save_images}/{index}_rendered_image_PIL.png', bbox_inches='tight')
-                target_image_PIL.save(f'{self.path_to_save_images}/{index}_target_image_PIL.png', bbox_inches='tight')
-                rendered_image_with_kps_cyc_check = draw_correspondences_1_image(kps_img_resolu_filtered[index], rendered_image_PIL) #, color='yellow')              #[-6:]
-                target_image_with_kps_cyc_check = draw_correspondences_1_image(corres_target_kps_filtered[index], target_image_PIL) #, color='yellow')              #[-6:]
-    
-                rendered_image_with_kps_list_after_cyc_check.append(rendered_image_with_kps_cyc_check)
-                target_image_with_kps_list_after_cyc_check.append(target_image_with_kps_cyc_check)
-                
-                # SAVE CYCLE CONSISTENCY IMAGES
-                self.save_cyc_consi_check_images(cycle_consi_image_with_kps, rendered_image_with_kps_cyc_check, target_image_with_kps_cyc_check, index)
+            # IF TRUE THEN SAVE CYCLE CONSISTENCY IMAGES
+            if self.cyc_check_img_save:
+                for index in range(kps_img_resolu.shape[0]):
+                    rendered_image_PIL.save(f'{self.path_to_save_images}/{index}_rendered_image_PIL.png', bbox_inches='tight')
+                    target_image_PIL.save(f'{self.path_to_save_images}/{index}_target_image_PIL.png', bbox_inches='tight')
+                    rendered_image_with_kps_cyc_check = draw_correspondences_1_image(kps_img_resolu_filtered[index], rendered_image_PIL) #, color='yellow')              #[-6:]
+                    target_image_with_kps_cyc_check = draw_correspondences_1_image(corres_target_kps_filtered[index], target_image_PIL) #, color='yellow')              #[-6:]
+
+                    rendered_image_with_kps_list_after_cyc_check.append(rendered_image_with_kps_cyc_check)
+                    target_image_with_kps_list_after_cyc_check.append(target_image_with_kps_cyc_check)
+
+                    # SAVE CYCLE CONSISTENCY IMAGES
+                    self.save_cyc_consi_check_images(cycle_consi_image_with_kps, rendered_image_with_kps_cyc_check, target_image_with_kps_cyc_check, index)
         
-                
+               
         output_dict = {
         "rendered_kps": kps_img_resolu,                     
         "target_corres_kps": corres_target_kps_tensor_stack,         
