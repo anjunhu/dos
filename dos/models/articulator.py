@@ -68,6 +68,7 @@ class Articulator(BaseModel):
         cyc_consi_check_switch = True,
         cyc_consi_check_dist_threshold = 15,
         seed = 50,
+        target_image_fixed = False,
     ):
         super().__init__()
         self.path_to_save_images = path_to_save_images
@@ -103,6 +104,7 @@ class Articulator(BaseModel):
         self.cyc_consi_check_switch = cyc_consi_check_switch
         self.cyc_consi_check_dist_threshold = cyc_consi_check_dist_threshold
         self.seed = random.seed(seed)
+        self.target_image_fixed = target_image_fixed
         
         if debug_mode == False:
             # LOADING ODISE MODEL
@@ -174,15 +176,6 @@ class Articulator(BaseModel):
         
         output_dict = {}
         
-        # corres_target_kps_tensor_stack = torch.empty(0, kps_img_resolu.shape[1], 2, device=kps_img_resolu.device)
-        # cycle_consi_kps_tensor_stack = torch.empty(0, kps_img_resolu.shape[1], 2, device=kps_img_resolu.device)
-        # rendered_image_with_kps_list = []
-        # rendered_image_NO_kps_list = []
-        # target_image_with_kps_list = []
-        # target_image_NO_kps_list = []
-        # cycle_consi_image_with_kps_list = []
-        
-        
         target_image_with_kps_list_after_cyc_check = []
         rendered_image_with_kps_list_after_cyc_check =[] 
         
@@ -203,31 +196,6 @@ class Articulator(BaseModel):
             # with open('log.txt', 'a') as file:
             #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
             print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")      
-        
-        
-        # for index in range(kps_img_resolu.shape[0]):
-            
-        #     rendered_image_PIL = F.to_pil_image(rendered_image[index])   
-        #     rendered_image_PIL = resize(rendered_image_PIL, 840, resize=True, to_pil=True)
-        #     target_image_PIL = F.to_pil_image(target_image[index])
-        #     target_image_PIL = resize(target_image_PIL, 840, resize=True, to_pil=True)
-            
-        #     rendered_image_with_kps = draw_correspondences_1_image(kps_img_resolu[index], rendered_image_PIL) 
-
-        #     # rendered_image_with_kps_list.append(rendered_image_with_kps)
-        #     # rendered_image_NO_kps_list.append(rendered_image_PIL)
-        #     # target_image_with_kps_list.append(target_image_with_kps)
-        #     # target_image_NO_kps_list.append(target_image_PIL)
-            
-        #     # # Correspondences (Target KPs)
-        #     # corres_target_kps_tensor_stack = torch.cat((corres_target_kps_tensor_stack, corres_target_kps.squeeze(0)), dim=0)
-            
-        #     if self.cyc_consi_check_switch:
-        #         # Cycle Consistency Images
-        #         cycle_consi_image_with_kps_list.append(cycle_consi_image_with_kps)
-        #         # Cycle Consistency KPs
-        #         cycle_consi_kps_tensor_stack = torch.cat((cycle_consi_kps_tensor_stack, cycle_consi_corres_kps.squeeze(0)), dim=0)
-
         
             
         # IF TRUE, REMOVE POINTS FOLLOWING CYCLE CONSISTENCY CHECK
@@ -442,8 +410,7 @@ class Articulator(BaseModel):
             #bones_predictor_outputs["bones_pred"],    # this is a rest pose    # bones_predictor_outputs["bones_pred"].shape is torch.Size([4, 20, 2, 3]), 4 is batch size, 20 is number of bones, 2 are the two endpoints of the bones and 3 means the 3D point defining one of the end points of the line segment in 3D that defines the bone 
             renderer_outputs["mask_pred"],
             renderer_outputs["image_pred"],            # renderer_outputs["image_pred"].shape is torch.Size([4, 3, 256, 256]), 4 is batch size, 3 is RGB channels, 256 is image resolution
-            target_img_rgb,                  # CHANGED replaced the target image with sd generated, BEFORE batch["image"],
-            # batch["image"]                           # static Target Images
+            target_image = batch["image"] if self.target_image_fixed else target_img_rgb,                  # batch["image"] is fixed Target images (generated from SD), target_img_rgb randomly generated per iteration
         )
 
         end_time = time.time()  # Record the end time
