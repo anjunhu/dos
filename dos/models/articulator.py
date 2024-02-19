@@ -57,6 +57,7 @@ class Articulator(BaseModel):
         fit_shape_template_inside_unit_cube=False,
         diffusion_Text_to_Target_Img=None,
         device = "cuda",
+        correspond = None,
         # TODO: Create a view sampler class to encapsulate the view sampling logic and settings
         view_option = "multi_view_azimu",
         random_camera_radius=[2.5, 2.5],
@@ -64,7 +65,7 @@ class Articulator(BaseModel):
         bones_rotations = "bones_rotations",
         debug_mode = False,
         using_pil_object = False,
-        cyclic_consi_check_on = True,
+        cyc_consi_check_switch = True,
         cyc_consi_check_dist_threshold = 15,
     ):
         super().__init__()
@@ -91,14 +92,14 @@ class Articulator(BaseModel):
         
         self.diffusion_Text_to_Target_Img = diffusion_Text_to_Target_Img if diffusion_Text_to_Target_Img is not None else DiffusionForTargetImg()
         self.device = device
-        self.correspond = ComputeCorrespond()
+        self.correspond = (correspond if correspond else ComputeCorrespond())
         self.view_option = view_option 
         self.random_camera_radius = random_camera_radius
         self.cyc_check_img_save = cyc_check_img_save
         self.bones_rotations = bones_rotations
         self.debug_mode = debug_mode
         self.using_pil_object = using_pil_object
-        self.cyclic_consi_check_on = cyclic_consi_check_on
+        self.cyc_consi_check_switch = cyc_consi_check_switch
         self.cyc_consi_check_dist_threshold = cyc_consi_check_dist_threshold
         
         if debug_mode == False:
@@ -170,62 +171,65 @@ class Articulator(BaseModel):
             kps_img_resolu = self.kps_fr_sample_farthest_points(rendered_image, mvp, visible_vertices, articulated_mesh, eroded_mask, self.num_sample_farthest_points)
         
         output_dict = {}
-        corres_target_kps_tensor_stack = torch.empty(0, kps_img_resolu.shape[1], 2, device=kps_img_resolu.device)
-        cycle_consi_kps_tensor_stack = torch.empty(0, kps_img_resolu.shape[1], 2, device=kps_img_resolu.device)
-        rendered_image_with_kps_list = []
-        rendered_image_NO_kps_list = []
-        target_image_with_kps_list = []
-        target_image_NO_kps_list = []
-        cycle_consi_image_with_kps_list = []
+        
+        # corres_target_kps_tensor_stack = torch.empty(0, kps_img_resolu.shape[1], 2, device=kps_img_resolu.device)
+        # cycle_consi_kps_tensor_stack = torch.empty(0, kps_img_resolu.shape[1], 2, device=kps_img_resolu.device)
+        # rendered_image_with_kps_list = []
+        # rendered_image_NO_kps_list = []
+        # target_image_with_kps_list = []
+        # target_image_NO_kps_list = []
+        # cycle_consi_image_with_kps_list = []
+        
+        
         target_image_with_kps_list_after_cyc_check = []
         rendered_image_with_kps_list_after_cyc_check =[] 
         
         # rendered_image = nn_functional.interpolate(rendered_image, size=(840, 840), mode='bilinear', align_corners=False)
         # target_image = nn_functional.interpolate(target_image, size=(840, 840), mode='bilinear', align_corners=False)
         
-        if self.cyclic_consi_check_on:
+        if self.cyc_consi_check_switch:
             start_time = time.time()
-            target_image_with_kps, corres_target_kps_tensor_stack, cycle_consi_image_with_kps, cycle_consi_corres_kps = self.correspond.compute_correspondences_sd_dino(img1_tensor=rendered_image, img1_kps=kps_img_resolu, img2_tensor=target_image, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
+            rendered_image_with_kps_list, rendered_image_NO_kps_list, target_image_with_kps_list, target_image_NO_kps_list, corres_target_kps_tensor_stack, cycle_consi_image_with_kps_list, cycle_consi_kps_tensor_stack = self.correspond.compute_correspondences_sd_dino(img1_tensor=rendered_image, img1_kps=kps_img_resolu, img2_tensor=target_image, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
             end_time = time.time()  # Record the end time
             # with open('log.txt', 'a') as file:
             #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
             print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
         else:
             start_time = time.time()
-            target_image_with_kps, corres_target_kps_tensor_stack  = self.correspond.compute_correspondences_sd_dino(img1_tensor=rendered_image, img1_kps=kps_img_resolu, img2_tensor=target_image, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
+            rendered_image_with_kps_list, rendered_image_NO_kps_list, target_image_with_kps_list, target_image_NO_kps_list, corres_target_kps_tensor_stack = self.correspond.compute_correspondences_sd_dino(img1_tensor=rendered_image, img1_kps=kps_img_resolu, img2_tensor=target_image, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
             end_time = time.time()  # Record the end time
             # with open('log.txt', 'a') as file:
             #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
             print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")      
         
-        for index in range(kps_img_resolu.shape[0]):
+        
+        # for index in range(kps_img_resolu.shape[0]):
             
-            rendered_image_PIL = F.to_pil_image(rendered_image[index])   
-            rendered_image_PIL = resize(rendered_image_PIL, 840, resize=True, to_pil=True)
-            target_image_PIL = F.to_pil_image(target_image[index])
-            target_image_PIL = resize(target_image_PIL, 840, resize=True, to_pil=True)
+        #     rendered_image_PIL = F.to_pil_image(rendered_image[index])   
+        #     rendered_image_PIL = resize(rendered_image_PIL, 840, resize=True, to_pil=True)
+        #     target_image_PIL = F.to_pil_image(target_image[index])
+        #     target_image_PIL = resize(target_image_PIL, 840, resize=True, to_pil=True)
             
-            rendered_image_with_kps = draw_correspondences_1_image(kps_img_resolu[index], rendered_image_PIL) 
+        #     rendered_image_with_kps = draw_correspondences_1_image(kps_img_resolu[index], rendered_image_PIL) 
 
-            rendered_image_with_kps_list.append(rendered_image_with_kps)
-            rendered_image_NO_kps_list.append(rendered_image_PIL)
+        #     # rendered_image_with_kps_list.append(rendered_image_with_kps)
+        #     # rendered_image_NO_kps_list.append(rendered_image_PIL)
+        #     # target_image_with_kps_list.append(target_image_with_kps)
+        #     # target_image_NO_kps_list.append(target_image_PIL)
             
-            target_image_with_kps_list.append(target_image_with_kps)
-            target_image_NO_kps_list.append(target_image_PIL)
+        #     # # Correspondences (Target KPs)
+        #     # corres_target_kps_tensor_stack = torch.cat((corres_target_kps_tensor_stack, corres_target_kps.squeeze(0)), dim=0)
             
-            # # Correspondences (Target KPs)
-            # corres_target_kps_tensor_stack = torch.cat((corres_target_kps_tensor_stack, corres_target_kps.squeeze(0)), dim=0)
-            
-            if self.cyclic_consi_check_on:
-                # Cycle Consistency Images
-                cycle_consi_image_with_kps_list.append(cycle_consi_image_with_kps)
-                # Cycle Consistency KPs
-                cycle_consi_kps_tensor_stack = torch.cat((cycle_consi_kps_tensor_stack, cycle_consi_corres_kps.squeeze(0)), dim=0)
+        #     if self.cyc_consi_check_switch:
+        #         # Cycle Consistency Images
+        #         cycle_consi_image_with_kps_list.append(cycle_consi_image_with_kps)
+        #         # Cycle Consistency KPs
+        #         cycle_consi_kps_tensor_stack = torch.cat((cycle_consi_kps_tensor_stack, cycle_consi_corres_kps.squeeze(0)), dim=0)
 
         
             
         # IF TRUE, REMOVE POINTS FOLLOWING CYCLE CONSISTENCY CHECK
-        if self.cyclic_consi_check_on:
+        if self.cyc_consi_check_switch:
             # Calculate the squared difference along the coordinate dimension (dim=2)
             squared_diff = torch.pow(kps_img_resolu - cycle_consi_kps_tensor_stack, 2)
 
@@ -266,17 +270,17 @@ class Articulator(BaseModel):
                     self.save_cyc_consi_check_images(cycle_consi_image_with_kps, rendered_image_with_kps_cyc_check, target_image_with_kps_cyc_check, index)
         
                
-        output_dict = {
-        "rendered_kps": kps_img_resolu,                     
-        "target_corres_kps": corres_target_kps_tensor_stack,         
-        "rendered_image_with_kps": rendered_image_with_kps_list,
-        "target_image_with_kps": target_image_with_kps_list,
-        "target_img_NO_kps": target_image_NO_kps_list,
-        "rendered_img_NO_kps": rendered_image_NO_kps_list,
-        "cycle_consi_image_with_kps": cycle_consi_image_with_kps_list,
-        "rendered_image_with_kps_list_after_cyc_check": rendered_image_with_kps_list_after_cyc_check,
-        "target_image_with_kps_list_after_cyc_check": target_image_with_kps_list_after_cyc_check,
-        }        
+            output_dict = {
+            "rendered_kps": kps_img_resolu,                     
+            "target_corres_kps": corres_target_kps_tensor_stack,         
+            "rendered_image_with_kps": rendered_image_with_kps_list,
+            "target_image_with_kps": target_image_with_kps_list,
+            "target_img_NO_kps": target_image_NO_kps_list,
+            "rendered_img_NO_kps": rendered_image_NO_kps_list,
+            "cycle_consi_image_with_kps": cycle_consi_image_with_kps_list,
+            "rendered_image_with_kps_list_after_cyc_check": rendered_image_with_kps_list_after_cyc_check,
+            "target_image_with_kps_list_after_cyc_check": target_image_with_kps_list_after_cyc_check,
+            }        
         
         ## Saving multiple random poses with and without keypoints visualisation
         self.save_multiple_random_poses(output_dict, self.path_to_save_images)

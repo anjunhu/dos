@@ -2,7 +2,8 @@ _target_: dos.trainer.Trainer # Class Name
 
 train_dataset:
   _target_: dos.datasets.ImageDataset       # Class Name
-  root_dir: /scratch/shared/beegfs/oishideb/cow  # sample 1
+  root_dir: /work/oishideb/cow_sd_generated  # /0_poses_target_img_NO_KPs.png
+  # root_dir: /scratch/shared/beegfs/oishideb/cow  # sample 1
   # root_dir: /work/oishideb/cow_sample_2  # sample 2
   # root_dir: /work/oishideb/cow_dataset/cow_dataset # 9 images
   # root_dir: /scratch/shared/beegfs/tomj/projects/articulator/datasets/synth_animals/cow-rd-articulator-v1.0  # Corrupted dataset
@@ -25,23 +26,28 @@ model:
     body_bones_type: z_minmax_y+
     temperature: 0.05
 
-  path_to_save_images: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-debug
+  path_to_save_images: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1642_single_view
   num_pose: 15
   num_sample_bone_line: 4  # 
   num_sample_farthest_points: 200
   mode_kps_selection: "kps_fr_sample_on_bone_line" # Options are "kps_fr_sample_on_bone_line" OR "kps_fr_sample_farthest_points"
   shape_template_path: /scratch/shared/beegfs/tomj/projects/articulator/data/synth_animals/shape_templates/cow_female-rd/Cow-OBJ-v01/Cow_Highpoly.obj
-  fit_shape_template_inside_unit_cube: True
+  fit_shape_template_inside_unit_cube: False # for single-view: False; for multi-view: True
   enable_texture_predictor: False
-  view_option: "multi_view_azimu" # Options are "multi_view_azimu"; "multi_view_rand"; "single_view"
-  random_camera_radius: 2.5
+  view_option: "single_view" # Options are "multi_view_azimu"; "multi_view_rand"; "single_view"
+  random_camera_radius: 1 # for single-view: 1 for multi-view: 2.5
   bones_rotations: "bones_rotations" # Options are "bones_rotations"; "DUMMY_bones_rotations"; "NO_bones_rotations"
   debug_mode: False # IN DEBUG MODE, THIS WILL SWITCH OFF THE LOADING TO FUSE'S STABLE DIFFUSION MODEL
   using_pil_object: False
-  cyclic_consi_check_on: False
+  cyc_consi_check_switch: True    # IMPORTANT: THIS SAME VARIABLE IS USED AT TWO PLACES, SWITCH ON/OFF AT BOTH PLACES
   cyc_consi_check_dist_threshold: 15
   cyc_check_img_save: False # This saves all the images with Cycle Consistency Check
   
+  correspond:
+    _target_: dos.components.fuse.compute_correspond.ComputeCorrespond
+    batch_compute: False    # Switch to turn on and off the Batch Computation for the correspondences
+    cyc_consi_check_switch: True  # IMPORTANT: THIS SAME VARIABLE IS USED AT TWO PLACES, SWITCH ON/OFF AT BOTH PLACES
+
   articulation_predictor:
     _target_: dos.predictors.articulation_predictor.ArticulationPredictor  # Class Name
     size_dataset: 49
@@ -56,7 +62,7 @@ model:
   diffusion_Text_to_Target_Img:  # variable Name
     _target_: dos.components.diffusion_model_text_to_image.diffusion_sds.DiffusionForTargetImg # Class Name
     cache_dir: /work/oishideb/cache/huggingface_hub
-    output_dir: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-debug/sd_sds_output/
+    output_dir: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1642_single_view/sd_sds_output/
     init_image_path: /users/oishideb/laam/dos/examples/data/cow.png
     vis_name: cow-sds_latent-l2_image-600-lr1e-1.jpg
     # prompts: 'A photograph of a single cow running very fast, back view.' #.The photo should have a grey background.' # DOS-1338  opti multi_view_azimu, GS20, Num_Infe50
@@ -67,8 +73,8 @@ model:
     lr: 0.1  # For DeepFloyd+SDS
     lr_l2: 0.1  # For SD+SDS  1e4
     # seed: 2
-    num_inference_steps: 35
-    guidance_scale: 70
+    num_inference_steps: 40
+    guidance_scale: 50
     dds: False
     select_diffusion_option: 'sd' # Options are sd, sd_XL, df, sd_dds_loss  # by default is sds loss
     image_fr_path: False
@@ -80,7 +86,7 @@ renderer:   # variable Name
   cam_pos_z_offset: 0.0
   fov: 28.84
 
-path_to_save_img_per_iteration: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-debug
+path_to_save_img_per_iteration: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1642_single_view
 checkpoint_root_dir: /work/oishideb/articulation_cow_chkpts
 experiment_name: articulator-dev-0.1
 save_each_iteration: False
@@ -93,7 +99,7 @@ device: cuda:0
 # learning_rate: 1e-9  # tried with 0.01, 0.5, 0.9, 1;   # 1e-4   # DOS_1432
 learning_rate: 0.1           # DOS_1433
 # for debugging
-num_iterations: 80
+num_iterations: 100
 num_vis_iterations: 2
 num_eval_iterations: 10
 save_checkpoint_freq: 50
