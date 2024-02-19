@@ -67,6 +67,7 @@ class Articulator(BaseModel):
         using_pil_object = False,
         cyc_consi_check_switch = True,
         cyc_consi_check_dist_threshold = 15,
+        seed = 50,
     ):
         super().__init__()
         self.path_to_save_images = path_to_save_images
@@ -101,6 +102,7 @@ class Articulator(BaseModel):
         self.using_pil_object = using_pil_object
         self.cyc_consi_check_switch = cyc_consi_check_switch
         self.cyc_consi_check_dist_threshold = cyc_consi_check_dist_threshold
+        self.seed = random.seed(seed)
         
         if debug_mode == False:
             # LOADING ODISE MODEL
