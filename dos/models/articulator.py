@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import torch.nn.functional as nn_functional
 import torchvision.transforms.functional as F
+import torchvision
 from PIL import Image, ImageDraw
 
 from dos.components.fuse.compute_correspond import \
@@ -54,13 +55,13 @@ class Articulator(BaseModel):
         articulation_predictor=None,
         renderer=None,
         shape_template_path=None,
+        view_option = "multi_view_azimu",
         fit_shape_template_inside_unit_cube=False,
         diffusion_Text_to_Target_Img=None,
         device = "cuda",
         correspond = None,
         # TODO: Create a view sampler class to encapsulate the view sampling logic and settings
-        view_option = "multi_view_azimu",
-        random_camera_radius=[2.5, 2.5],
+        random_camera_radius= 2.5,  #[2.5, 2.5],
         cyc_check_img_save = False,
         bones_rotations = "bones_rotations",
         debug_mode = False,
@@ -86,17 +87,17 @@ class Articulator(BaseModel):
         # Articulation predictor
         self.articulation_predictor = (articulation_predictor if articulation_predictor else ArticulationPredictor())
         self.renderer = renderer if renderer is not None else Renderer()
-
+        self.view_option = view_option
+        
         if shape_template_path is not None:
-            self.shape_template = self._load_shape_template(shape_template_path, fit_inside_unit_cube=fit_shape_template_inside_unit_cube)
+            self.shape_template = self._load_shape_template(shape_template_path, fit_inside_unit_cube=False if self.view_option == "single_view" else True)
         else:
             self.shape_template = None
         
         self.diffusion_Text_to_Target_Img = diffusion_Text_to_Target_Img if diffusion_Text_to_Target_Img is not None else DiffusionForTargetImg()
         self.device = device
         self.correspond = (correspond if correspond else ComputeCorrespond())
-        self.view_option = view_option 
-        self.random_camera_radius = random_camera_radius
+        self.random_camera_radius = 1 if self.view_option == "single_view" else 2.5
         self.cyc_check_img_save = cyc_check_img_save
         self.bones_rotations = bones_rotations
         self.debug_mode = debug_mode
@@ -228,8 +229,13 @@ class Articulator(BaseModel):
             # IF TRUE THEN SAVE CYCLE CONSISTENCY IMAGES
             if self.cyc_check_img_save:
                 for index in range(kps_img_resolu.shape[0]):
-                    rendered_image_PIL.save(f'{self.path_to_save_images}/{index}_rendered_image_PIL.png', bbox_inches='tight')
-                    target_image_PIL.save(f'{self.path_to_save_images}/{index}_target_image_PIL.png', bbox_inches='tight')
+                    # rendered_image_PIL.save(f'{self.path_to_save_images}/{index}_rendered_image_PIL.png', bbox_inches='tight')
+                    # target_image_PIL.save(f'{self.path_to_save_images}/{index}_target_image_PIL.png', bbox_inches='tight')
+                    rendered_image_PIL = torchvision.transforms.functional.to_pil_image(rendered_image[index])
+                    rendered_image_PIL = resize(rendered_image_PIL, 840, resize=True, to_pil=True)
+                    target_image_PIL = torchvision.transforms.functional.to_pil_image(target_image[index])
+                    target_image_PIL = resize(target_image_PIL, 840, resize=True, to_pil=True)
+                    
                     rendered_image_with_kps_cyc_check = draw_correspondences_1_image(kps_img_resolu_filtered[index], rendered_image_PIL) #, color='yellow')              #[-6:]
                     target_image_with_kps_cyc_check = draw_correspondences_1_image(corres_target_kps_filtered[index], target_image_PIL) #, color='yellow')              #[-6:]
 
@@ -237,7 +243,7 @@ class Articulator(BaseModel):
                     target_image_with_kps_list_after_cyc_check.append(target_image_with_kps_cyc_check)
 
                     # SAVE CYCLE CONSISTENCY IMAGES
-                    self.save_cyc_consi_check_images(cycle_consi_image_with_kps, rendered_image_with_kps_cyc_check, target_image_with_kps_cyc_check, index)
+                    self.save_cyc_consi_check_images(cycle_consi_image_with_kps_list[index], rendered_image_with_kps_cyc_check, target_image_with_kps_cyc_check, index)
         
                
             output_dict = {
@@ -490,7 +496,7 @@ class Articulator(BaseModel):
     ## Saving poses along the azimuth
     def save_pose_along_azimuth(self, articulated_mesh, material, path_to_save_images):
         
-        pose, _ = multi_view.poses_along_azimuth(self.num_pose, device=self.device)
+        pose, _ = multi_view.poses_along_azimuth(self.num_pose, device=self.device, radius=self.random_camera_radius)
         
         renderer_outputs = self.renderer(
             articulated_mesh,
@@ -501,7 +507,7 @@ class Articulator(BaseModel):
         
         for i in range(pose.shape[0]):
             rendered_image_PIL = F.to_pil_image(renderer_outputs["image_pred"][i])
-            #rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
+            rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
             dir_path = f'{path_to_save_images}/azimuth_pose/rendered_img/'
             # Create the directory if it doesn't exist
             os.makedirs(dir_path, exist_ok=True)
