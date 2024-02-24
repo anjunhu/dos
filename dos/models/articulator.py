@@ -45,7 +45,8 @@ class Articulator(BaseModel):
     def __init__(
         self,
         path_to_save_images,
-        num_pose,
+        num_pose_for_optim,
+        num_pose_for_visual,
         num_sample_bone_line,
         num_sample_farthest_points = 100,
         mode_kps_selection = "kps_fr_sample_on_bone_line",
@@ -73,7 +74,8 @@ class Articulator(BaseModel):
     ):
         super().__init__()
         self.path_to_save_images = path_to_save_images
-        self.num_pose = num_pose
+        self.num_pose_for_optim = num_pose_for_optim
+        self.num_pose_for_visual = num_pose_for_visual
         self.num_sample_bone_line = num_sample_bone_line
         self.num_sample_farthest_points = num_sample_farthest_points
         self.mode_kps_selection = mode_kps_selection
@@ -90,14 +92,14 @@ class Articulator(BaseModel):
         self.view_option = view_option
         
         if shape_template_path is not None:
-            self.shape_template = self._load_shape_template(shape_template_path, fit_inside_unit_cube=False if self.view_option == "single_view" else True)
+            self.shape_template = self._load_shape_template(shape_template_path, fit_inside_unit_cube=fit_shape_template_inside_unit_cube)    # False if self.view_option == "single_view" else True
         else:
             self.shape_template = None
         
         self.diffusion_Text_to_Target_Img = diffusion_Text_to_Target_Img if diffusion_Text_to_Target_Img is not None else DiffusionForTargetImg()
         self.device = device
         self.correspond = (correspond if correspond else ComputeCorrespond())
-        self.random_camera_radius = 1 if self.view_option == "single_view" else 2.5
+        self.random_camera_radius = random_camera_radius    # 1 if self.view_option == "single_view" else 2.5
         self.cyc_check_img_save = cyc_check_img_save
         self.bones_rotations = bones_rotations
         self.debug_mode = debug_mode
@@ -178,7 +180,8 @@ class Articulator(BaseModel):
         output_dict = {}
         
         target_image_with_kps_list_after_cyc_check = []
-        rendered_image_with_kps_list_after_cyc_check =[] 
+        rendered_image_with_kps_list_after_cyc_check =[]
+        cycle_consi_image_with_kps_list = []
         
         # rendered_image = nn_functional.interpolate(rendered_image, size=(840, 840), mode='bilinear', align_corners=False)
         # target_image = nn_functional.interpolate(target_image, size=(840, 840), mode='bilinear', align_corners=False)
@@ -245,18 +248,18 @@ class Articulator(BaseModel):
                     # SAVE CYCLE CONSISTENCY IMAGES
                     self.save_cyc_consi_check_images(cycle_consi_image_with_kps_list[index], rendered_image_with_kps_cyc_check, target_image_with_kps_cyc_check, index)
         
-               
-            output_dict = {
-            "rendered_kps": kps_img_resolu,                     
-            "target_corres_kps": corres_target_kps_tensor_stack,         
-            "rendered_image_with_kps": rendered_image_with_kps_list,
-            "target_image_with_kps": target_image_with_kps_list,
-            "target_img_NO_kps": target_image_NO_kps_list,
-            "rendered_img_NO_kps": rendered_image_NO_kps_list,
-            "cycle_consi_image_with_kps": cycle_consi_image_with_kps_list,
-            "rendered_image_with_kps_list_after_cyc_check": rendered_image_with_kps_list_after_cyc_check,
-            "target_image_with_kps_list_after_cyc_check": target_image_with_kps_list_after_cyc_check,
-            }        
+            
+        output_dict = {
+        "rendered_kps": kps_img_resolu,                     
+        "target_corres_kps": corres_target_kps_tensor_stack,         
+        "rendered_image_with_kps": rendered_image_with_kps_list,
+        "target_image_with_kps": target_image_with_kps_list,
+        "target_img_NO_kps": target_image_NO_kps_list,
+        "rendered_img_NO_kps": rendered_image_NO_kps_list,
+        "cycle_consi_image_with_kps": cycle_consi_image_with_kps_list,
+        "rendered_image_with_kps_list_after_cyc_check": rendered_image_with_kps_list_after_cyc_check,
+        "target_image_with_kps_list_after_cyc_check": target_image_with_kps_list_after_cyc_check,
+        }        
         
         ## Saving multiple random poses with and without keypoints visualisation
         self.save_multiple_random_poses(output_dict, self.path_to_save_images)
@@ -345,10 +348,10 @@ class Articulator(BaseModel):
             elif self.view_option == "multi_view_rand":
                 # For Multi View
                 # pose shape is [num_pose, 12]
-                pose, _ = multi_view.rand_poses(self.num_pose, self.device, radius_range=self.random_camera_radius)
+                pose, _ = multi_view.rand_poses(self.num_pose_for_optim, self.device, radius_range=self.random_camera_radius)
                 
             elif self.view_option == "multi_view_azimu":
-                pose, _ = multi_view.poses_along_azimuth(self.num_pose, self.device, radius=self.random_camera_radius)
+                pose, _ = multi_view.poses_along_azimuth(self.num_pose_for_optim, self.device, radius=self.random_camera_radius)
         else:
             pose=batch["pose"]
         
@@ -496,7 +499,11 @@ class Articulator(BaseModel):
     ## Saving poses along the azimuth
     def save_pose_along_azimuth(self, articulated_mesh, material, path_to_save_images):
         
-        pose, _ = multi_view.poses_along_azimuth(self.num_pose, device=self.device, radius=self.random_camera_radius)
+        if self.view_option == "single_view":
+            # Added for debugging purpose
+            pose, _ = multi_view.poses_along_azimuth_single_view(self.num_pose_for_visual, device=self.device)
+        else:
+            pose, _ = multi_view.poses_along_azimuth(self.num_pose_for_visual, device=self.device, radius=self.random_camera_radius)
         
         renderer_outputs = self.renderer(
             articulated_mesh,
@@ -522,6 +529,7 @@ class Articulator(BaseModel):
         
         for index, item in enumerate(model_outputs["rendered_image_with_kps"]):
             
+            # This image is a Matplotlib Object
             dir_path = f'{path_to_save_img_per_iteration}/rendered_img_with_kps/{index}_pose'
             os.makedirs(dir_path, exist_ok=True)
             model_outputs["rendered_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_rendered_img_with_kps.png', bbox_inches='tight')
@@ -531,6 +539,7 @@ class Articulator(BaseModel):
             os.makedirs(dir_path, exist_ok=True)
             model_outputs["rendered_img_NO_kps"][index].save(f'{dir_path}/{iteration}_rendered_img_NO_kps.png', bbox_inches='tight')
 
+            # This image is a Matplotlib Object
             dir_path = f'{path_to_save_img_per_iteration}/target_img_with_kps/{index}_pose'
             os.makedirs(dir_path, exist_ok=True)
             model_outputs["target_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_target_img_with_kps.png', bbox_inches='tight')
@@ -540,15 +549,20 @@ class Articulator(BaseModel):
             os.makedirs(dir_path, exist_ok=True)
             model_outputs["target_img_NO_kps"][index].save(f'{dir_path}/{iteration}_target_img_NO_kps.png', bbox_inches='tight')
             
-            dir_path = f'{path_to_save_img_per_iteration}/cycle_consi/{index}_pose'
-            os.makedirs(dir_path, exist_ok=True)
-            model_outputs["cycle_consi_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_cycle_consi.png', bbox_inches='tight')
+            
+            if (self.cyc_consi_check_switch & self.cyc_check_img_save):
+                
+                # This image is a Matplotlib Object
+                dir_path = f'{path_to_save_img_per_iteration}/cycle_consi/{index}_pose'
+                os.makedirs(dir_path, exist_ok=True)
+                model_outputs["cycle_consi_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_cycle_consi.png', bbox_inches='tight')
 
-            if self.cyc_check_img_save:
+                # This image is a Matplotlib Object
                 dir_path = f'{path_to_save_img_per_iteration}/rendered_image_with_kps_list_after_cyc_check/{index}_pose'
                 os.makedirs(dir_path, exist_ok=True)
                 model_outputs["rendered_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_rendered_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
 
+                # This image is a Matplotlib Object
                 dir_path = f'{path_to_save_img_per_iteration}/target_image_with_kps_list_after_cyc_check/{index}_pose'
                 os.makedirs(dir_path, exist_ok=True)
                 model_outputs["target_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_target_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
