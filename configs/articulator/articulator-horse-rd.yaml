@@ -1,0 +1,110 @@
+_target_: dos.trainer.Trainer # Class Name
+
+train_dataset:
+  _target_: dos.datasets.ImageDataset       # Class Name
+  root_dir: /work/oishideb/horse_sd_generated_0  
+  attributes:
+    - name: image
+      suffix: _rgb.png
+    - name: mask
+      suffix: _mask.png
+    - name: background
+      suffix: _background.png
+    - name: camera_matrix
+      suffix: _camera.txt
+
+model:
+  _target_: dos.models.articulator.Articulator 
+  bones_predictor:
+    _target_: dos.components.skinning.bones_estimation.BonesEstimator
+    num_body_bones: 8
+    num_leg_bones: 3
+    body_bones_type: z_minmax_y+
+    temperature: 0.05
+
+  path_to_save_images: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1756_single_view_horse_fixed_target
+  num_pose_for_optim: 4
+  num_pose_for_visual: 10
+  num_sample_bone_line: 4  #
+  num_sample_farthest_points: 150
+  mode_kps_selection: "kps_fr_sample_farthest_points" # Options are "kps_fr_sample_on_bone_line" OR "kps_fr_sample_farthest_points"
+  shape_template_path: /scratch/shared/beegfs/tomj/projects/articulator/data/synth_animals/shape_templates/cgtrader/uploads-files-2390590-Horse_Family_v01/Horse_HighPoly.obj
+  enable_texture_predictor: False
+  
+  view_option: "multi_view_azimu" # Options are "multi_view_azimu"; "multi_view_rand"; "single_view"
+  random_camera_radius: 2.5 # for single_view: 1; for multi-view: 2.5
+  fit_shape_template_inside_unit_cube: True # for single_view: False; for multi-view: True
+
+  bones_rotations: "bones_rotations" # Options are "bones_rotations"; "DUMMY_bones_rotations"; "NO_bones_rotations"
+  debug_mode: False # IN DEBUG MODE, THIS WILL SWITCH OFF THE LOADING TO FUSE'S STABLE DIFFUSION MODEL
+  using_pil_object: False
+  cyc_consi_check_switch: False    # IMPORTANT: THIS SAME VARIABLE IS USED AT TWO PLACES, SWITCH ON/OFF AT BOTH PLACES
+  cyc_consi_check_dist_threshold: 15 # 15
+  cyc_check_img_save: True # This saves all the images with Cycle Consistency Check
+  # seed: 100
+  target_image_fixed: False
+  
+  correspond:
+    _target_: dos.components.fuse.compute_correspond.ComputeCorrespond
+    batch_compute: False    # Switch to turn on and off the Batch Computation for the correspondences
+    cyc_consi_check_switch: False  # IMPORTANT: THIS SAME VARIABLE IS USED AT TWO PLACES, SWITCH ON/OFF AT BOTH PLACES
+
+  articulation_predictor:
+    _target_: dos.predictors.articulation_predictor.ArticulationPredictor  # Class Name
+    size_dataset: 49
+    num_bones: 20
+    degree: 50
+    
+  renderer:   # variable Name
+    _target_: dos.modules.renderer.Renderer # Class Name
+    cam_pos_z_offset: 0.0
+    fov: 28.84 # blender 70 mm focal length, 36 mm sensor width
+
+  diffusion_Text_to_Target_Img:  # variable Name
+    _target_: dos.components.diffusion_model_text_to_image.diffusion_sds.DiffusionForTargetImg # Class Name
+    cache_dir: /work/oishideb/cache/huggingface_hub
+    output_dir: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1755_single_view_horse_fixed_target/sd_sds_output/
+    init_image_path: /users/oishideb/laam/dos/examples/data/cow.png
+    vis_name: cow-sds_latent-l2_image-600-lr1e-1.jpg
+    # prompts: 'A photograph of a single cow running very fast, back view.' #.The photo should have a grey background.' # DOS-1338  opti multi_view_azimu, GS20, Num_Infe50
+    prompts_source: '' #.The photo should have a grey background.' # DOS-1339  opti multi_view_azimu, GS20, Num_Infe50
+    negative_prompts: 'front view, side view, tail' #  , cartoon, dead, shadow, reflection'     # the string shouldn't be in a square brackets ['']
+    # prompts: 'A photograph of a fully white cow running very fast, back view. All four legs should be visible. No cow tail'
+    # prompts: 'A photograph of a horse stretching two front legs, side view. All four legs should be visible. No tail' # back view
+    prompts: 'A photograph of a horse walking, back view. All four legs should be visible. No tail' #, side view.
+    mode: sds_latent # Options are sds_image OR sds_latent-l2_image # sds_latent
+    lr: 0.1  # For DeepFloyd+SDS
+    lr_l2: 0.1  # For SD+SDS  1e4
+    # seed: 8 # 6
+    num_inference_steps: 50
+    guidance_scale: 45
+    dds: False
+    select_diffusion_option: 'sd' # Options are sd, sd_XL, df, sd_dds_loss  # by default is sds loss
+    image_fr_path: False
+    save_visuals_every_n_iter: 2
+    schedule: "[600] * 50"
+
+renderer:   # variable Name
+  _target_: dos.modules.renderer.Renderer # Class Name
+  cam_pos_z_offset: 0.0
+  fov: 28.84
+
+path_to_save_img_per_iteration: /work/oishideb/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1755_single_view_horse_fixed_target
+checkpoint_root_dir: /work/oishideb/articulation_cow_chkpts
+experiment_name: articulator-dev-0.1
+save_each_iteration: True
+evaluate_the_model: False
+
+device: cuda:0
+
+# resume: True
+
+# learning_rate: 1e-9  # tried with 0.01, 0.5, 0.9, 1;   # 1e-4   # DOS_1432
+learning_rate: 0.02           # DOS_1433
+# for debugging
+num_iterations: 30
+num_vis_iterations: 1
+num_eval_iterations: 10
+save_checkpoint_freq: 50
+num_workers: 0
+batch_size: 1
