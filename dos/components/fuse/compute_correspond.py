@@ -9,7 +9,7 @@ from dos.components.fuse.extractor_dino import ViTExtractor
 from dos.components.fuse.extractor_sd import process_features_and_mask, get_mask
 from tqdm import tqdm
 from dos.utils.correspondence import pairwise_sim, chunk_cosine_sim, co_pca, find_nearest_patchs, \
-                                resize, draw_correspondences_1_image  #, get_n_colors
+                                resize, draw_correspondences_1_image, draw_correspondences_combined  #, get_n_colors
 import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn.functional as F
@@ -85,30 +85,32 @@ class ComputeCorrespond:
         target_image_with_kps_list_after_cyc_check = []
         rendered_image_with_kps_list_after_cyc_check =[] 
         
-        if self.batch_compute==False:
+        rendered_target_image_with_wo_kps_list = []
+        
+        if self.batch_compute==True:
+            # Computing as a Batch
             # Get patch index for the keypoints
-            img1_y = img1_kps[:, :, 1].cpu()         # ORIGINAL CODE                # img1_kps should be [(num of kps)20,2]
-            img1_x = img1_kps[:, :, 0].cpu()           # ORIGINAL CODE                # img1_kps should be [(num of kps)20,2]                    
+            img1_y = img1_kps[:, :, 1].cpu()         # ORIGINAL CODE                # img1_kps should be [Batch size,(num of kps)20,2]
+            img1_x = img1_kps[:, :, 0].cpu()           # ORIGINAL CODE                # img1_kps should be [Batch size,(num of kps)20,2]                    
             img1_y, img1_x = img1_y.detach().numpy(), img1_x.detach().numpy()
             img1_y_patch = (num_patches / img_size * img1_y).astype(np.int32)
             img1_x_patch = (num_patches / img_size * img1_x).astype(np.int32)
             img1_patch_idx = num_patches * img1_y_patch + img1_x_patch
-        else:
-            # Get patch index for the keypoints
-            img1_y = img1_kps[:, :, 1]                
-            img1_x = img1_kps[:, :, 0]
-                            
-            # img1_y, img1_x = img1_y.detach().numpy(), img1_x.detach().numpy()
-            img1_y_patch = (num_patches / img_size * img1_y).to(torch.int32)
-            img1_x_patch = (num_patches / img_size * img1_x).to(torch.int32)
-            # Calculate the linear patch index
-            img1_patch_idx = num_patches * img1_y_patch + img1_x_patch
-            
+           
             # Create Empty tensors
             img1_desc_batch = torch.empty(1, 1, 3600, 1536, device=self.device)
             img2_desc_batch = torch.empty(1, 1, 3600, 1536, device=self.device)
         
+        
         for index in range(img1_tensor.shape[0]):
+              
+            # Get patch index for the keypoints
+            img1_y = img1_kps[index][:, 1].cpu()         # ORIGINAL CODE                # img1_kps should be [Batch size,(num of kps)20,2]
+            img1_x = img1_kps[index][:, 0].cpu()           # ORIGINAL CODE                # img1_kps should be [Batch size,(num of kps)20,2]                    
+            img1_y, img1_x = img1_y.detach().numpy(), img1_x.detach().numpy()
+            img1_y_patch = (num_patches / img_size * img1_y).astype(np.int32)
+            img1_x_patch = (num_patches / img_size * img1_x).astype(np.int32)
+            img1_patch_idx = num_patches * img1_y_patch + img1_x_patch
             
             # Load image 1
             img1 = torchvision.transforms.functional.to_pil_image(img1_tensor[index])   
@@ -261,6 +263,10 @@ class ComputeCorrespond:
                 # print('img1_desc shape', img1_desc.shape)  # img1_desc shape is torch.Size([1, 1, 3600, 1536]) the image dim is 60 * 60 = 3600, 60 is multiplied with stride 14 = 840, hence for DINOv2 the input_size is 840
                 # print('img2_desc shape', img2_desc.shape)  # img2_desc shape is torch.Size([1, 1, 3600, 1536])
             
+            if self.batch_compute:
+                img1_desc_batch = torch.cat((img1_desc_batch, img1_desc), dim=0)
+                img2_desc_batch = torch.cat((img2_desc_batch, img2_desc), dim=0)
+            
             if self.batch_compute==False:
                 # Get similarity matrix
                 if dist == 'cos':
@@ -290,7 +296,7 @@ class ComputeCorrespond:
                 # Get nearest neighors
                 # multi-view, its 'img1_patch_idx shape (num_poses, 2)'
                 # for one-view, its 'img1_patch_idx shape (1, 2)'
-                nn_1_to_2 = torch.argmax(sim_1_to_2[img1_patch_idx], dim=1)
+                nn_1_to_2 = torch.argmax(sim_1_to_2[img1_patch_idx], dim=1)      # img1_patch_idx[index]
                 # nn_y_patch = nn_1_to_2 // num_patches # this line gives deprecated warning so updated to the below line. 
                 nn_y_patch = torch.div(nn_1_to_2, num_patches, rounding_mode='floor')
                 nn_x_patch = nn_1_to_2 % num_patches
@@ -299,7 +305,6 @@ class ComputeCorrespond:
 
                 kps_1_to_2 = torch.stack([nn_x, nn_y]).permute(1, 0)
                 
-                
                 rendered_image_PIL = torchvision.transforms.functional.to_pil_image(img1_tensor[index])
                 rendered_image_PIL = resize(rendered_image_PIL, 840, resize=True, to_pil=True)
                 
@@ -307,16 +312,20 @@ class ComputeCorrespond:
                 target_image_PIL = resize(target_image_PIL, 840, resize=True, to_pil=True)
                 
                 rendered_image_with_kps = draw_correspondences_1_image(img1_kps[index], rendered_image_PIL)
-                target_image_with_kps = draw_correspondences_1_image(kps_1_to_2, target_image_PIL, index=0)
+                # rendered_image_with_kps.savefig(f'{index}_debug_rendered_img_with_KPs.png', bbox_inches='tight')
+            
+                target_image_with_kps = draw_correspondences_1_image(kps_1_to_2, target_image_PIL)
+                
+                rendered_target_image_with_wo_kps = draw_correspondences_combined(img1_kps[index], kps_1_to_2, rendered_image_PIL, target_image_PIL)
 
                 rendered_image_with_kps_list.append(rendered_image_with_kps)
                 rendered_image_NO_kps_list.append(rendered_image_PIL)
                 target_image_with_kps_list.append(target_image_with_kps)
                 target_image_NO_kps_list.append(target_image_PIL)
+                rendered_target_image_with_wo_kps_list.append(rendered_target_image_with_wo_kps)
                 
                 img1_kps = img1_kps.to(self.device)
                 kps_1_to_2 = kps_1_to_2.to(self.device)
-                
                 
                 corres_target_kps_tensor_stack = torch.cat((corres_target_kps_tensor_stack, kps_1_to_2.unsqueeze(0)), dim=0)
 
@@ -344,23 +353,18 @@ class ComputeCorrespond:
 
                     kps_2_to_1 = kps_2_to_1.to(self.device)
                     
-                    cycle_consi_image_with_kps_list.append(img_cc)
                     # Cycle Consistency KPs
                     cycle_consi_kps_tensor_stack = torch.cat((cycle_consi_kps_tensor_stack, kps_2_to_1.unsqueeze(0)), dim=0)
-
-
-            if self.cyc_consi_check_switch:
-                return rendered_image_with_kps_list, rendered_image_NO_kps_list, target_image_with_kps_list, target_image_NO_kps_list, corres_target_kps_tensor_stack, cycle_consi_image_with_kps_list, cycle_consi_kps_tensor_stack
-            else:
-                # return img2, kps_1_to_2
-                return rendered_image_with_kps_list, rendered_image_NO_kps_list, target_image_with_kps_list, target_image_NO_kps_list, corres_target_kps_tensor_stack
-            
+                    
+                    cycle_consi_image_with_kps_list.append(img_cc)
+                    
+        # -- THIS IS OUTSIDE THE FOR LOOP     
+        if self.cyc_consi_check_switch:
+            return rendered_image_with_kps_list, rendered_image_NO_kps_list, target_image_with_kps_list, target_image_NO_kps_list, corres_target_kps_tensor_stack, cycle_consi_image_with_kps_list, cycle_consi_kps_tensor_stack, rendered_target_image_with_wo_kps_list
+        else:
+            # return img2, kps_1_to_2
+            return rendered_image_with_kps_list, rendered_image_NO_kps_list, target_image_with_kps_list, target_image_NO_kps_list, corres_target_kps_tensor_stack, rendered_target_image_with_wo_kps_list
     
-            if self.batch_compute:
-                img1_desc_batch = torch.cat((img1_desc_batch, img1_desc), dim=0)
-                img2_desc_batch = torch.cat((img2_desc_batch, img2_desc), dim=0)
-        
-        
         # -- THIS IS OUTSIDE THE FOR LOOP - For Batch Computation
         if self.batch_compute:
             # Get similarity matrix
@@ -392,7 +396,7 @@ class ComputeCorrespond:
             # multi-view, its 'img1_patch_idx shape (num_poses, 2)'
             # for one-view, its 'img1_patch_idx shape (1, 2)'
 
-
+            # FIXME - correspondences are outside when doing as a Batch Compute
             img1_patch_idx = img1_patch_idx.long()
             # Step 1: Correctly index sim_1_to_2 with img1_patch_idx
             # We need a batch index to pair with img1_patch_idx for gathering
@@ -423,17 +427,7 @@ class ComputeCorrespond:
             if self.cyc_consi_check_switch:
                 ###   FOR CYCLE CONSISTENCY CHECK   ### 
                 sim_2_to_1 = torch.transpose(sim_1_to_2, 0, 1)
-                # # Get patch index for the keypoints
-                # # img1_kps should be 2D [(num of kps)20,2]
-                # img1_y = kps_1_to_2[:, 1].cpu()             # ORIGINAL
-                # img1_x = kps_1_to_2[:, 0].cpu()             # ORIGINAL
-                # img1_y, img1_x = img1_y.detach().numpy(), img1_x.detach().numpy()
-                # img1_y_patch = (num_patches / img_size * img1_y).astype(np.int32)
-                # img1_x_patch = (num_patches / img_size * img1_x).astype(np.int32)
-                # img2_patch_idx = num_patches * img1_y_patch + img1_x_patch
-
-
-                 # Get patch index for the keypoints
+                # Get patch index for the keypoints
                 # img1_kps should be 2D [(num of kps)20,2]
                 img1_y = kps_1_to_2[:, :, 1]
                 img1_x = kps_1_to_2[:, :, 0]
@@ -442,23 +436,11 @@ class ComputeCorrespond:
                 img1_x_patch = (num_patches / img_size * img1_x).to(torch.int32)
                 img2_patch_idx = num_patches * img1_y_patch + img1_x_patch
 
-
-                # nn_2_to_1 = torch.argmax(sim_2_to_1[img2_patch_idx], dim=1)
-                # nn_x_patch = nn_2_to_1 % num_patches
-                # nn_x = (nn_x_patch - 1) * self.stride + self.stride + patch_size // 2 - .5
-                # nn_y = (nn_y_patch - 1) * self.stride + self.stride + patch_size // 2 - .5
-                # kps_2_to_1 = torch.stack([nn_x, nn_y]).permute(1, 0)
-
-                # img2_patch_idx = img2_patch_idx.long()
-
-                # Assuming sim_2_to_1 is of shape [Batch size, num_patches, num_patches]
-                # and img2_patch_idx is of shape [Batch size, 75]
-
                 # Step 1: Prepare for batch indexing
                 batch_size, seq_len = img2_patch_idx.shape
                 batch_indices = torch.arange(batch_size).unsqueeze(1).expand(-1, seq_len).to(img2_patch_idx.device)
 
-                # Convert img2_patch_idx to long if it's not already
+                # Convert img2_patch_idx to long
                 img2_patch_idx = img2_patch_idx.long()
 
                 # Step 2: Perform the batch indexing
