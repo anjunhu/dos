@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from typing import List, Tuple
@@ -9,6 +9,7 @@ import faiss
 import cv2
 import os
 from matplotlib.patches import ConnectionPatch
+import io
 
 #---- This func is written by Oishi
 # Function to pad a tensor with zeros to the max_length
@@ -71,6 +72,69 @@ def draw_correspondences_1_image(points1: List[Tuple[float, float]], image1: Ima
     plt.tight_layout()
     
     return fig
+
+def convert_fig_to_image(fig):
+    """
+    Convert a Matplotlib figure to a PIL Image.
+    """
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
+    buf.seek(0)
+    img = Image.open(buf)
+    plt.close(fig)  # Close the figure to prevent it from displaying in a notebook or GUI
+    return img
+
+
+def draw_correspondences_combined(points1: List[Tuple[float, float]], points2: List[Tuple[float, float]], 
+                                  image1: Image.Image, image2: Image.Image) -> Image.Image:
+    """
+    Draw point correspondences on images and return a combined image.
+    """
+    # Set the gap width
+    small_gap_width = 40
+    
+    # Adjust the figure size based on the input image height
+    fig, axs = plt.subplots(1, 2, figsize=(12, image1.height / 100))
+    
+    for ax, points, image in zip(axs, [points1, points2], [image1, image2]):
+        ax.imshow(image)
+        ax.axis('off')
+        num_points = len(points)
+        cmap = ListedColormap(["red", "yellow", "blue", "lime", "magenta", "indigo", "orange", "cyan", "darkgreen",
+                               "maroon", "white", "black", "chocolate", "gray", "blueviolet"])
+        colors = cmap(np.linspace(0, 1, num_points))
+        radius = 0.01 * max(image.size)
+        
+        for idx, (point, color) in enumerate(zip(points, colors)):
+            x, y = point
+            circ = plt.Circle((x, y), radius, color=color)
+            ax.add_patch(circ)
+            
+            # Adding an integer number next to the point
+            ax.text(x + radius, y, str(idx), color='blue', fontsize=10, verticalalignment='center', horizontalalignment='left')
+    
+    # Convert the figure with plots to a PIL image
+    fig1_image = convert_fig_to_image(fig)
+
+    # Resize fig1_image to match the height of the input images
+    fig1_image = fig1_image.resize((image1.width * 2, image1.height), Image.Resampling.LANCZOS)
+    
+    # Calculate total width considering
+    total_width = image1.width * 2 + image2.width * 2   # + small_gap_width 
+
+    # Create a new image with a width that can hold both the input images and the plot images.
+    combined_image = Image.new('RGB', (total_width, image1.height), 'black')
+    
+    # Paste the images into the combined image with specified gaps
+    combined_image.paste(image1, (0, 0))
+    combined_image.paste(Image.new('RGB', (small_gap_width, image1.height), 'white'), (image1.width, 0)) 
+    combined_image.paste(fig1_image.crop((0, 0, image1.width, image1.height)), (image1.width + small_gap_width, 0))
+    # combined_image.paste(Image.new('RGB', (small_gap_width, image1.height), 'white'), (image1.width * 2, 0))
+    combined_image.paste(image2, (image1.width * 2, 0))
+    # combined_image.paste(Image.new('RGB', (small_gap_width, image1.height), 'white'), (image1.width * 3, 0))
+    combined_image.paste(fig1_image.crop((image1.width, 0, image1.width * 2, image1.height)), (image1.width * 3, 0))
+    
+    return combined_image
 
 
 ##----- This func is taken from the "Tale of 2 Features" paper (https://github.com/Junyi42/sd-dino/blob/master/utils/utils_correspondence.py)
