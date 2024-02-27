@@ -83,6 +83,7 @@ class Trainer:
     neptune_api_token: Optional[str] = None
     renderer: Renderer = None # Added
     evaluate_the_model: bool = True # Added
+    save_individual_img: bool = False
 
     def __post_init__(self):
         self.val_dataset = self.val_dataset or self.train_dataset
@@ -218,18 +219,24 @@ class Trainer:
             
             num_visuals = min(num_visuals, len(batch["image"]))
             
-            start_time = time.time()    
-            for index, visual in enumerate(model_outputs['rendered_image_with_kps']):
-                neptune_run[log_prefix + "/rendered_image_with_kps_"+ str(index)].append(visual, step=iteration)
-                        
-            for index, visual in enumerate(model_outputs['target_image_with_kps']):
-                neptune_run[log_prefix + "/target_image_with_kps_"+ str(index)].append(visual, step=iteration)  
-                
-            for index, visual in enumerate(model_outputs['rendered_image_with_kps_list_after_cyc_check']):
-                neptune_run[log_prefix + "/rendered_image_with_kps_list_after_cyc_check_"+ str(index)].append(visual, step=iteration) 
+            start_time = time.time()
             
-            for index, visual in enumerate(model_outputs['target_image_with_kps_list_after_cyc_check']):
-                neptune_run[log_prefix + "/target_image_with_kps_list_after_cyc_check"+ str(index)].append(visual, step=iteration)
+            if self.save_individual_img:   
+                for index, visual in enumerate(model_outputs['rendered_image_with_kps']):
+                    neptune_run[log_prefix + "/rendered_image_with_kps_"+ str(index)].append(visual, step=iteration)
+                            
+                for index, visual in enumerate(model_outputs['target_image_with_kps']):
+                    neptune_run[log_prefix + "/target_image_with_kps_"+ str(index)].append(visual, step=iteration)  
+                    
+                for index, visual in enumerate(model_outputs['rendered_image_with_kps_list_after_cyc_check']):
+                    neptune_run[log_prefix + "/rendered_image_with_kps_list_after_cyc_check_"+ str(index)].append(visual, step=iteration) 
+                
+                for index, visual in enumerate(model_outputs['target_image_with_kps_list_after_cyc_check']):
+                    neptune_run[log_prefix + "/target_image_with_kps_list_after_cyc_check"+ str(index)].append(visual, step=iteration)
+                
+            for index, visual in enumerate(model_outputs['rendered_target_image_with_wo_kps_list']):
+                neptune_run[log_prefix + "/rendered_target_image_with_wo_kps_list"+ str(index)].append(visual, step=iteration)
+            
             
             end_time = time.time()  # Record the end time
             with open('log.txt', 'a') as file:
