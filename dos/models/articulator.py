@@ -71,6 +71,7 @@ class Articulator(BaseModel):
         cyc_consi_check_dist_threshold = 15,
         seed = 50,
         target_image_fixed = False,
+        save_individual_img = False,
     ):
         super().__init__()
         self.path_to_save_images = path_to_save_images
@@ -108,6 +109,7 @@ class Articulator(BaseModel):
         self.cyc_consi_check_dist_threshold = cyc_consi_check_dist_threshold
         self.seed = random.seed(seed)
         self.target_image_fixed = target_image_fixed
+        self.save_individual_img = save_individual_img
         
         if debug_mode == False:
             # LOADING ODISE MODEL
@@ -188,14 +190,14 @@ class Articulator(BaseModel):
         
         if self.cyc_consi_check_switch:
             start_time = time.time()
-            rendered_image_with_kps_list, rendered_image_NO_kps_list, target_image_with_kps_list, target_image_NO_kps_list, corres_target_kps_tensor_stack, cycle_consi_image_with_kps_list, cycle_consi_kps_tensor_stack = self.correspond.compute_correspondences_sd_dino(img1_tensor=rendered_image, img1_kps=kps_img_resolu, img2_tensor=target_image, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
+            rendered_image_with_kps_list, rendered_image_NO_kps_list, target_image_with_kps_list, target_image_NO_kps_list, corres_target_kps_tensor_stack, cycle_consi_image_with_kps_list, cycle_consi_kps_tensor_stack, rendered_target_image_with_wo_kps_list = self.correspond.compute_correspondences_sd_dino(img1_tensor=rendered_image, img1_kps=kps_img_resolu, img2_tensor=target_image, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
             end_time = time.time()  # Record the end time
             # with open('log.txt', 'a') as file:
             #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
             print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
         else:
             start_time = time.time()
-            rendered_image_with_kps_list, rendered_image_NO_kps_list, target_image_with_kps_list, target_image_NO_kps_list, corres_target_kps_tensor_stack = self.correspond.compute_correspondences_sd_dino(img1_tensor=rendered_image, img1_kps=kps_img_resolu, img2_tensor=target_image, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
+            rendered_image_with_kps_list, rendered_image_NO_kps_list, target_image_with_kps_list, target_image_NO_kps_list, corres_target_kps_tensor_stack, rendered_target_image_with_wo_kps_list = self.correspond.compute_correspondences_sd_dino(img1_tensor=rendered_image, img1_kps=kps_img_resolu, img2_tensor=target_image, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
             end_time = time.time()  # Record the end time
             # with open('log.txt', 'a') as file:
             #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
@@ -259,6 +261,7 @@ class Articulator(BaseModel):
         "cycle_consi_image_with_kps": cycle_consi_image_with_kps_list,
         "rendered_image_with_kps_list_after_cyc_check": rendered_image_with_kps_list_after_cyc_check,
         "target_image_with_kps_list_after_cyc_check": target_image_with_kps_list_after_cyc_check,
+        "rendered_target_image_with_wo_kps_list": rendered_target_image_with_wo_kps_list,
         }        
         
         ## Saving multiple random poses with and without keypoints visualisation
@@ -478,22 +481,29 @@ class Articulator(BaseModel):
         
         for index, item in enumerate(model_outputs["rendered_image_with_kps"]):
         
-            # With KPs visualisation - these images are Matplotlib Objects
-            if not os.path.exists(f'{path_to_save_images}/all_poses_rendered_img_with_KPs'):
-                os.makedirs(f'{path_to_save_images}/all_poses_rendered_img_with_KPs')
-            model_outputs["rendered_image_with_kps"][index].savefig(f'{path_to_save_images}/all_poses_rendered_img_with_KPs/{index}_poses_rendered_img_with_KPs.png', bbox_inches='tight')
-            if not os.path.exists(f'{path_to_save_images}/all_poses_target_img_with_KPs'):
-                os.makedirs(f'{path_to_save_images}/all_poses_target_img_with_KPs')
-            model_outputs["target_image_with_kps"][index].savefig(f'{path_to_save_images}/all_poses_target_img_with_KPs/{index}_poses_target_img_with_KPs.png', bbox_inches='tight')
-            
-            # Without KPs visualisation - these images are PIL Objects
-            if not os.path.exists(f'{path_to_save_images}/all_poses_rendered_img_NO_KPs'):
-                os.makedirs(f'{path_to_save_images}/all_poses_rendered_img_NO_KPs')
-            model_outputs["rendered_img_NO_kps"][index].save(f'{path_to_save_images}/all_poses_rendered_img_NO_KPs/{index}_poses_rendered_img_NO_KPs.png', bbox_inches='tight')
-            
-            if not os.path.exists(f'{path_to_save_images}/all_poses_target_img_NO_KPs'):
-                os.makedirs(f'{path_to_save_images}/all_poses_target_img_NO_KPs')
-            model_outputs["target_img_NO_kps"][index].save(f'{path_to_save_images}/all_poses_target_img_NO_KPs/{index}_poses_target_img_NO_KPs.png', bbox_inches='tight')
+            if self.save_individual_img:
+                # With KPs visualisation - these images are Matplotlib Object
+                if not os.path.exists(f'{path_to_save_images}/all_poses_rendered_img_with_KPs'):
+                    os.makedirs(f'{path_to_save_images}/all_poses_rendered_img_with_KPs')
+                plt.gcf().set_facecolor('grey')
+                model_outputs["rendered_image_with_kps"][index].savefig(f'{path_to_save_images}/all_poses_rendered_img_with_KPs/{index}_poses_rendered_img_with_KPs.png', bbox_inches='tight')
+                if not os.path.exists(f'{path_to_save_images}/all_poses_target_img_with_KPs'):
+                    os.makedirs(f'{path_to_save_images}/all_poses_target_img_with_KPs')
+                plt.gcf().set_facecolor('grey')
+                model_outputs["target_image_with_kps"][index].savefig(f'{path_to_save_images}/all_poses_target_img_with_KPs/{index}_poses_target_img_with_KPs.png', bbox_inches='tight')
+                
+                # Without KPs visualisation - these images are PIL Object
+                if not os.path.exists(f'{path_to_save_images}/all_poses_rendered_img_NO_KPs'):
+                    os.makedirs(f'{path_to_save_images}/all_poses_rendered_img_NO_KPs')
+                model_outputs["rendered_img_NO_kps"][index].save(f'{path_to_save_images}/all_poses_rendered_img_NO_KPs/{index}_poses_rendered_img_NO_KPs.png', bbox_inches='tight')
+                
+                if not os.path.exists(f'{path_to_save_images}/all_poses_target_img_NO_KPs'):
+                    os.makedirs(f'{path_to_save_images}/all_poses_target_img_NO_KPs')
+                model_outputs["target_img_NO_kps"][index].save(f'{path_to_save_images}/all_poses_target_img_NO_KPs/{index}_poses_target_img_NO_KPs.png', bbox_inches='tight')
+                
+            if not os.path.exists(f'{path_to_save_images}/all_poses_rendered_target_combined'):
+                os.makedirs(f'{path_to_save_images}/all_poses_rendered_target_combined')
+            model_outputs["rendered_target_image_with_wo_kps_list"][index].save(f'{path_to_save_images}/all_poses_rendered_target_combined/{index}_all_poses_rendered_target_combined.png', bbox_inches='tight')
             
 
     ## Saving poses along the azimuth
@@ -529,25 +539,32 @@ class Articulator(BaseModel):
         
         for index, item in enumerate(model_outputs["rendered_image_with_kps"]):
             
-            # This image is a Matplotlib Object
-            dir_path = f'{path_to_save_img_per_iteration}/rendered_img_with_kps/{index}_pose'
-            os.makedirs(dir_path, exist_ok=True)
-            model_outputs["rendered_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_rendered_img_with_kps.png', bbox_inches='tight')
+            if self.save_individual_img:  
+                # This image is a Matplotlib Object
+                dir_path = f'{path_to_save_img_per_iteration}/rendered_img_with_kps/{index}_pose'
+                os.makedirs(dir_path, exist_ok=True)
+                plt.gcf().set_facecolor('grey')
+                model_outputs["rendered_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_rendered_img_with_kps.png', bbox_inches='tight')
 
-            # This image is a PIL Object
-            dir_path = f'{path_to_save_img_per_iteration}/rendered_img_NO_kps/{index}_pose'
-            os.makedirs(dir_path, exist_ok=True)
-            model_outputs["rendered_img_NO_kps"][index].save(f'{dir_path}/{iteration}_rendered_img_NO_kps.png', bbox_inches='tight')
+                # This image is a PIL Object
+                dir_path = f'{path_to_save_img_per_iteration}/rendered_img_NO_kps/{index}_pose'
+                os.makedirs(dir_path, exist_ok=True)
+                model_outputs["rendered_img_NO_kps"][index].save(f'{dir_path}/{iteration}_rendered_img_NO_kps.png', bbox_inches='tight')
 
-            # This image is a Matplotlib Object
-            dir_path = f'{path_to_save_img_per_iteration}/target_img_with_kps/{index}_pose'
+                # This image is a Matplotlib Object
+                plt.gcf().set_facecolor('grey')
+                dir_path = f'{path_to_save_img_per_iteration}/target_img_with_kps/{index}_pose'
+                os.makedirs(dir_path, exist_ok=True)
+                model_outputs["target_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_target_img_with_kps.png', bbox_inches='tight')
+                
+                # This image is a PIL Object
+                dir_path = f'{path_to_save_img_per_iteration}/target_img_NO_kps/{index}_pose'
+                os.makedirs(dir_path, exist_ok=True)
+                model_outputs["target_img_NO_kps"][index].save(f'{dir_path}/{iteration}_target_img_NO_kps.png', bbox_inches='tight')
+                
+            dir_path = f'{path_to_save_img_per_iteration}/rendered_target_image_with_wo_kps_list/{index}_pose'
             os.makedirs(dir_path, exist_ok=True)
-            model_outputs["target_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_target_img_with_kps.png', bbox_inches='tight')
-            
-            # This image is a PIL Object
-            dir_path = f'{path_to_save_img_per_iteration}/target_img_NO_kps/{index}_pose'
-            os.makedirs(dir_path, exist_ok=True)
-            model_outputs["target_img_NO_kps"][index].save(f'{dir_path}/{iteration}_target_img_NO_kps.png', bbox_inches='tight')
+            model_outputs["rendered_target_image_with_wo_kps_list"][index].save(f'{dir_path}/{iteration}_rendered_target_image_with_wo_kps_list.png', bbox_inches='tight')
             
             
             if (self.cyc_consi_check_switch & self.cyc_check_img_save):
@@ -555,16 +572,19 @@ class Articulator(BaseModel):
                 # This image is a Matplotlib Object
                 dir_path = f'{path_to_save_img_per_iteration}/cycle_consi/{index}_pose'
                 os.makedirs(dir_path, exist_ok=True)
+                plt.gcf().set_facecolor('grey')
                 model_outputs["cycle_consi_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_cycle_consi.png', bbox_inches='tight')
 
                 # This image is a Matplotlib Object
                 dir_path = f'{path_to_save_img_per_iteration}/rendered_image_with_kps_list_after_cyc_check/{index}_pose'
                 os.makedirs(dir_path, exist_ok=True)
+                plt.gcf().set_facecolor('grey')
                 model_outputs["rendered_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_rendered_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
 
                 # This image is a Matplotlib Object
                 dir_path = f'{path_to_save_img_per_iteration}/target_image_with_kps_list_after_cyc_check/{index}_pose'
                 os.makedirs(dir_path, exist_ok=True)
+                plt.gcf().set_facecolor('grey')
                 model_outputs["target_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_target_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
 
             end_time = time.time()  # Record the end time
