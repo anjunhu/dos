@@ -88,7 +88,7 @@ def poses_helper_func(size, device, phis, thetas, radius_range=[2.5, 2.5], angle
     
     return poses, dirs
 
-def poses_along_azimuth(size, device, radius=2.5, theta=90, phi_range=[0, 360]):
+def poses_along_azimuth(size, device, radius=2.5, theta=90, phi_range=[0, 360], two_side_views_only=False):
     ''' generate random poses from an orbit camera along uniformly distributed azimuth and fixed elevation
     Args:
         size: batch size of generated poses.
@@ -99,12 +99,18 @@ def poses_along_azimuth(size, device, radius=2.5, theta=90, phi_range=[0, 360]):
         poses: [size, 4, 4]
     '''
 
-    theta = np.deg2rad(theta)                   
-    phi_range = np.deg2rad(phi_range)
+    theta = np.deg2rad(theta)
     
-    # For azimuth rotation (phi), we will create a sequence of values within the specified range
-    # Do not include endpoint (as in np.linspace) to avoid duplicate values
-    phis = torch.linspace(phi_range[0], phi_range[1], steps=size+1, device=device)[:size]
+    if two_side_views_only:
+        # Side view 1 at 90 degrees and side view 2 at -90 degrees (270 degrees in radians)
+        phis = torch.tensor([np.deg2rad(90), np.deg2rad(-90)], dtype=torch.float, device=device)
+    else:                       
+        phi_range = np.deg2rad(phi_range)
+        # For azimuth rotation (phi), we will create a sequence of values within the specified range
+        # Do not include endpoint (as in np.linspace) to avoid duplicate values
+        phis = torch.linspace(phi_range[0], phi_range[1], steps=size+1, device=device)[:size]
+        
+    
     # Keeping theta (elevation angle) constant
     thetas = torch.full((size,), theta, device=device)
     
