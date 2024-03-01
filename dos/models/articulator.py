@@ -63,6 +63,8 @@ class Articulator(BaseModel):
         correspond = None,
         # TODO: Create a view sampler class to encapsulate the view sampling logic and settings
         random_camera_radius= 2.5,  #[2.5, 2.5],
+        phi_range_for_optim = [90,90],
+        phi_range_for_visual = [0, 360],
         cyc_check_img_save = False,
         bones_rotations = "bones_rotations",
         debug_mode = False,
@@ -72,6 +74,7 @@ class Articulator(BaseModel):
         seed = 50,
         target_image_fixed = False,
         save_individual_img = False,
+        two_side_views_only = False, #Two side view poses along the azimuth
     ):
         super().__init__()
         self.path_to_save_images = path_to_save_images
@@ -101,6 +104,8 @@ class Articulator(BaseModel):
         self.device = device
         self.correspond = (correspond if correspond else ComputeCorrespond())
         self.random_camera_radius = random_camera_radius    # 1 if self.view_option == "single_view" else 2.5
+        self.phi_range_for_optim = phi_range_for_optim
+        self.phi_range_for_visual = phi_range_for_visual
         self.cyc_check_img_save = cyc_check_img_save
         self.bones_rotations = bones_rotations
         self.debug_mode = debug_mode
@@ -110,6 +115,7 @@ class Articulator(BaseModel):
         self.seed = random.seed(seed)
         self.target_image_fixed = target_image_fixed
         self.save_individual_img = save_individual_img
+        self.two_side_views_only = two_side_views_only
         
         if debug_mode == False:
             # LOADING ODISE MODEL
@@ -354,7 +360,7 @@ class Articulator(BaseModel):
                 pose, _ = multi_view.rand_poses(self.num_pose_for_optim, self.device, radius_range=self.random_camera_radius)
                 
             elif self.view_option == "multi_view_azimu":
-                pose, _ = multi_view.poses_along_azimuth(self.num_pose_for_optim, self.device, radius=self.random_camera_radius)
+                pose, _ = multi_view.poses_along_azimuth(self.num_pose_for_optim, self.device, radius=self.random_camera_radius, phi_range=self.phi_range_for_optim, two_side_views_only=self.two_side_views_only)
         else:
             pose=batch["pose"]
         
@@ -513,7 +519,7 @@ class Articulator(BaseModel):
             # Added for debugging purpose
             pose, _ = multi_view.poses_along_azimuth_single_view(self.num_pose_for_visual, device=self.device)
         else:
-            pose, _ = multi_view.poses_along_azimuth(self.num_pose_for_visual, device=self.device, radius=self.random_camera_radius)
+            pose, _ = multi_view.poses_along_azimuth(self.num_pose_for_visual, device=self.device, radius=self.random_camera_radius, phi_range=self.phi_range_for_visual)
         
         renderer_outputs = self.renderer(
             articulated_mesh,
