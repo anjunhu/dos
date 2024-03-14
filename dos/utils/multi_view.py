@@ -38,6 +38,14 @@ def view_direction_id_to_text(view_direction_id):
     dir_texts = ['front', 'side', 'back', 'side', 'overhead', 'bottom']
     return [dir_texts[i] for i in view_direction_id]
 
+def get_alternating_phi(device, last_phi=[None]):
+    # Use a mutable default argument as a static variable to store the last state
+    if last_phi[0] is None or last_phi[0] == np.deg2rad(-90):
+        last_phi[0] = np.deg2rad(90)
+    else:
+        last_phi[0] = np.deg2rad(-90)
+    return torch.tensor([last_phi[0]], dtype=torch.float, device=device)
+
 
 def poses_helper_func(size, device, phis, thetas, radius_range=[2.5, 2.5], angle_overhead=30, angle_front=60, phi_offset=0, jitter=False, cam_z_offset=0, return_dirs=True):
     
@@ -88,7 +96,7 @@ def poses_helper_func(size, device, phis, thetas, radius_range=[2.5, 2.5], angle
     
     return poses, dirs
 
-def poses_along_azimuth(size, device, radius=2.5, theta=90, phi_range=[0, 360], two_side_views_only=False, random_phi_along_azimuth=False):
+def poses_along_azimuth(size, device, radius=2.5, theta=90, phi_range=[0, 360], multi_view_option='multiple_random_phi_in_batch'):
     ''' generate random poses from an orbit camera along uniformly distributed azimuth and fixed elevation
     Args:
         size: batch size of generated poses.
@@ -101,12 +109,14 @@ def poses_along_azimuth(size, device, radius=2.5, theta=90, phi_range=[0, 360], 
 
     theta = np.deg2rad(theta)
     
-    if two_side_views_only:
+    if multi_view_option == '2_side_views_only_in_batch':
         # Side view 1 at 90 degrees and side view 2 at -90 degrees
         phis = torch.tensor([np.deg2rad(90), np.deg2rad(-90)], dtype=torch.float, device=device)
-    elif random_phi_along_azimuth:
+    elif multi_view_option == 'random_phi_each_step_along_azimuth':
         phis = torch.rand(size, device=device) * (phi_range[1] - phi_range[0]) + phi_range[0]
-    else:                       
+    elif multi_view_option == 'alternate_2_side_views_each_step_along_azimuth':
+        phis = get_alternating_phi(device)
+    elif multi_view_option == 'multiple_random_phi_in_batch':                       
         phi_range = np.deg2rad(phi_range)
         # For azimuth rotation (phi), we will create a sequence of values within the specified range
         # Do not include endpoint (as in np.linspace) to avoid duplicate values
