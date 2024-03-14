@@ -74,8 +74,7 @@ class Articulator(BaseModel):
         seed = 50,
         target_image_fixed = False,
         save_individual_img = False,
-        two_side_views_only = False, #Two side view poses along the azimuth
-        random_phi_along_azimuth = False,
+        multi_view_optimise_option = 'random_phi_each_step_along_azimuth',
     ):
         super().__init__()
         self.path_to_save_images = path_to_save_images
@@ -116,8 +115,7 @@ class Articulator(BaseModel):
         self.seed = random.seed(seed)
         self.target_image_fixed = target_image_fixed
         self.save_individual_img = save_individual_img
-        self.two_side_views_only = two_side_views_only
-        self.random_phi_along_azimuth = random_phi_along_azimuth
+        self.multi_view_optimise_option = multi_view_optimise_option
         
         if debug_mode == False:
             # LOADING ODISE MODEL
@@ -362,7 +360,7 @@ class Articulator(BaseModel):
                 pose, _ = multi_view.rand_poses(self.num_pose_for_optim, self.device, radius_range=self.random_camera_radius)
                 
             elif self.view_option == "multi_view_azimu":
-                pose, _ = multi_view.poses_along_azimuth(self.num_pose_for_optim, self.device, radius=self.random_camera_radius, phi_range=self.phi_range_for_optim, two_side_views_only=self.two_side_views_only, random_phi_along_azimuth=self.random_phi_along_azimuth)
+                pose, _ = multi_view.poses_along_azimuth(self.num_pose_for_optim, self.device, radius=self.random_camera_radius, phi_range=self.phi_range_for_optim, multi_view_option = self.multi_view_optimise_option)
         else:
             pose=batch["pose"]
         
@@ -514,14 +512,14 @@ class Articulator(BaseModel):
             model_outputs["rendered_target_image_with_wo_kps_list"][index].save(f'{path_to_save_images}/all_poses_rendered_target_combined/{index}_all_poses_rendered_target_combined.png', bbox_inches='tight')
             
 
-    ## Saving poses along the azimuth
+    ## Saving poses along the azimuth for Visualisation
     def save_pose_along_azimuth(self, articulated_mesh, material, path_to_save_images):
         
         if self.view_option == "single_view":
             # Added for debugging purpose
             pose, _ = multi_view.poses_along_azimuth_single_view(self.num_pose_for_visual, device=self.device)
         else:
-            pose, _ = multi_view.poses_along_azimuth(self.num_pose_for_visual, device=self.device, radius=self.random_camera_radius, phi_range=self.phi_range_for_visual)
+            pose, _ = multi_view.poses_along_azimuth(self.num_pose_for_visual, device=self.device, radius=self.random_camera_radius, phi_range=self.phi_range_for_visual, multi_view_option ='multiple_random_phi_in_batch')
         
         renderer_outputs = self.renderer(
             articulated_mesh,
