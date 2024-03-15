@@ -38,13 +38,27 @@ def view_direction_id_to_text(view_direction_id):
     dir_texts = ['front', 'side', 'back', 'side', 'overhead', 'bottom']
     return [dir_texts[i] for i in view_direction_id]
 
-def get_alternating_phi(device, last_phi=[None]):
+def get_2_alternating_phi(device, last_phi=[None]):
     # Use a mutable default argument as a static variable to store the last state
     if last_phi[0] is None or last_phi[0] == np.deg2rad(-90):
         last_phi[0] = np.deg2rad(90)
     else:
         last_phi[0] = np.deg2rad(-90)
     return torch.tensor([last_phi[0]], dtype=torch.float, device=device)
+
+def get_4_alternating_phi(device, last_phi=[-1]):
+    # the sequence of phi values to cycle through
+    phi_sequence = [np.deg2rad(90), np.deg2rad(180), np.deg2rad(-90), np.deg2rad(360)]
+    
+    # Use a static variable (last_phi) to store the index of the last phi value in the sequence
+    # Increment the index to move to the next value in the sequence
+    last_phi[0] = (last_phi[0] + 1) % len(phi_sequence)
+    
+    # Select the current phi value based on the updated index
+    current_phi = phi_sequence[last_phi[0]]
+    
+    # Return a tensor containing the current phi value
+    return torch.tensor([current_phi], dtype=torch.float, device=device)
 
 
 def poses_helper_func(size, device, phis, thetas, radius_range=[2.5, 2.5], angle_overhead=30, angle_front=60, phi_offset=0, jitter=False, cam_z_offset=0, return_dirs=True):
@@ -115,7 +129,9 @@ def poses_along_azimuth(size, device, radius=2.5, theta=90, phi_range=[0, 360], 
     elif multi_view_option == 'random_phi_each_step_along_azimuth':
         phis = torch.rand(size, device=device) * (phi_range[1] - phi_range[0]) + phi_range[0]
     elif multi_view_option == 'alternate_2_side_views_each_step_along_azimuth':
-        phis = get_alternating_phi(device)
+        phis = get_2_alternating_phi(device)
+    elif multi_view_option == 'alternate_4_side_views_each_step_along_azimuth':
+        phis = get_4_alternating_phi(device)
     elif multi_view_option == 'multiple_random_phi_in_batch':                       
         phi_range = np.deg2rad(phi_range)
         # For azimuth rotation (phi), we will create a sequence of values within the specified range
