@@ -23,6 +23,7 @@ import torch.optim
 from dos.components.diffusion_model_text_to_image.deep_floyd import DeepFloyd
 from dos.components.diffusion_model_text_to_image.sd import (StableDiffusion,
                                                              seed_everything)
+from dos.components.diffusion_model_text_to_image.multiview_sd import MultiviewDiffusionGuidance
 from dos.components.diffusion_model_text_to_image.sd_dds_loss import \
     StableDiffusionDDSLoss
 from dos.components.diffusion_model_text_to_image.sd_XL import \
@@ -106,6 +107,8 @@ class DiffusionForTargetImg:
             self.df = DeepFloyd(self.device, cache_dir, torch_dtype=torch_dtype)
         elif self.select_diffusion_option == "sd":
             self.sd = StableDiffusion(self.device, cache_dir, torch_dtype=torch_dtype)
+        elif self.select_diffusion_option =="multiview_sd":
+            self.multiview_sd = StableDiffusion(self.device, cache_dir, torch_dtype=torch_dtype)
         elif self.select_diffusion_option == "sd_XL":
             self.sd_XL = StableDiffusionXL(self.device, cache_dir, torch_dtype=torch_dtype)
         elif self.select_diffusion_option == "sd_dds_loss":
@@ -135,6 +138,10 @@ class DiffusionForTargetImg:
             # Uses pre-trained CLIP Embeddings; # Prompts -> text embeds
             # SHAPE OF text_embeddings [2, 77, 768]
             text_embeddings = self.sd.get_text_embeds(
+                self.prompts, self.negative_prompts, use_nfsd=self.use_nfsd
+            )
+        elif self.select_diffusion_option == "multiview_sd":
+            text_embeddings = self.multiview_sd.get_text_embeds(
                 self.prompts, self.negative_prompts, use_nfsd=self.use_nfsd
             )
         elif self.select_diffusion_option == "sd_XL":
@@ -191,6 +198,8 @@ class DiffusionForTargetImg:
 
             if self.select_diffusion_option == "sd":
                 latents = self.sd.encode_imgs(pred_rgb_512)
+            if self.select_diffusion_option == "multiview_sd":
+                latents = self.multiview_sd.encode_imgs(pred_rgb_512)
             if self.select_diffusion_option == "sd_XL":
                 latents = self.sd_XL.encode_imgs(pred_rgb_512)
             elif self.select_diffusion_option == "sd_dds_loss":
@@ -231,6 +240,8 @@ class DiffusionForTargetImg:
                     train_step_fn = partial(self.df.train_step, pred_rgb=pred_rgb)
                 elif self.select_diffusion_option in ["sd"]:
                     train_step_fn = partial(self.sd.train_step, pred_rgb=pred_rgb)
+                elif self.select_diffusion_option == "multiview_sd":
+                    train_step_fn = partial(self.multiview_sd.train_step, pred_rgb=pred_rgb)
                 elif self.select_diffusion_option in ["sd_XL"]:
                     train_step_fn = partial(self.sd_XL.train_step, pred_rgb=pred_rgb)
                 elif self.select_diffusion_option == "sd_dds_loss":
@@ -247,6 +258,8 @@ class DiffusionForTargetImg:
                     train_step_fn = partial(self.df.train_step, latents=latents)
                 elif self.select_diffusion_option in ["sd"]:
                     train_step_fn = partial(self.sd.train_step, latents=latents)
+                elif self.select_diffusion_option == "multiview_sd":
+                    train_step_fn = partial(self.multiview_sd.train_step, latents=latents)
                 elif self.select_diffusion_option in ["sd_XL"]:
                     train_step_fn = partial(self.sd_XL.train_step, latents=latents)
             else:
@@ -297,7 +310,12 @@ class DiffusionForTargetImg:
 
                 # Decoding the Latent to image space for Stable Diffusion
                 # TODO: use the same variable name for all the models
-                sd = self.sd if self.select_diffusion_option == "sd" else self.sd_XL
+                
+                if self.select_diffusion_option in ["sd"]:
+                    sd = self.sd if self.select_diffusion_option in ["sd"] else self.sd_XL
+                else:
+                    sd = self.multiview_sd if self.select_diffusion_option in ["multiview_sd"] else self.sd_XL
+                    
                 # TODO: add option to decode only the last image if the mode is sds_latent - get speed up
                 rgb_decoded = sd.decode_latents(latents)
                 print(
@@ -336,7 +354,7 @@ class DiffusionForTargetImg:
             if i % self.save_visuals_every_n_iter == 0:
                 all_imgs.append(pred_rgb.clone().detach())
 
-                if self.select_diffusion_option in ["sd", "sd_XL"]:
+                if self.select_diffusion_option in ["sd", "sd_XL", "multiview_sd"]:
                     all_decoded_imgs.append(rgb_decoded.clone().detach())
 
         if self.mode in ["sds_latent", "sds_latent_decenc"]:
@@ -354,7 +372,7 @@ class DiffusionForTargetImg:
             all_imgs = rearrange(torch.stack(all_imgs), "t b c h w -> (b t) c h w")
             all_imgs = torchvision.utils.make_grid(all_imgs, nrow=n_images, pad_value=1)
 
-            if self.select_diffusion_option in ["sd", "sd_XL"]:
+            if self.select_diffusion_option in ["sd", "sd_XL", "multiview_sd"]:
                 all_decoded_imgs = rearrange(
                     torch.stack(all_decoded_imgs), "t b c h w -> (b t) c h w"
                 )
@@ -387,7 +405,7 @@ class DiffusionForTargetImg:
             pred_rgb_PIL = torchvision_F.to_pil_image(pred_rgb[0])
             pred_rgb_PIL.save(f"{self.output_dir}/{index}_pred_rgb.jpg")
 
-            if self.select_diffusion_option in ["sd", "sd_XL"]:
+            if self.select_diffusion_option in ["sd", "sd_XL", "multiview_sd"]:
                 # rgb_decoded size is 512x512
                 rgb_decoded_PIL = torchvision_F.to_pil_image(rgb_decoded[0])
                 rgb_decoded_PIL.save(f"{self.output_dir}/{index}_rgb_decoded.jpg")
