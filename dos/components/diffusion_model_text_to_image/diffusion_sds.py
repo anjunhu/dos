@@ -53,6 +53,7 @@ class DiffusionForTargetImg:
         prompts=["a cow with front leg raised"],
         negative_prompts=[""],
         prompts_source=[],
+        view_dependent_prompting=True,
         mode="sds_latent",
         lr=0.1,
         momentum=0.0,
@@ -78,6 +79,7 @@ class DiffusionForTargetImg:
         self.prompts_source = prompts_source
         self.negative_prompts = negative_prompts
         self.prompts = prompts
+        self.view_dependent_prompting = view_dependent_prompting
         self.mode = mode
         self.optimizer_class = optimizer_class
         self.lr = lr
@@ -108,7 +110,7 @@ class DiffusionForTargetImg:
         elif self.select_diffusion_option == "sd":
             self.sd = StableDiffusion(self.device, cache_dir, torch_dtype=torch_dtype)
         elif self.select_diffusion_option =="multiview_sd":
-            self.multiview_sd = StableDiffusion(self.device, cache_dir, torch_dtype=torch_dtype)
+            self.multiview_sd = MultiviewDiffusionGuidance(self.device, cache_dir, torch_dtype=torch_dtype)
         elif self.select_diffusion_option == "sd_XL":
             self.sd_XL = StableDiffusionXL(self.device, cache_dir, torch_dtype=torch_dtype)
         elif self.select_diffusion_option == "sd_dds_loss":
@@ -126,31 +128,42 @@ class DiffusionForTargetImg:
         if self.seed is not None:
             seed_everything(self.seed)
 
-    def run_experiment(self, input_image, image_fr_path=False, index=0):
+    def append_view_direction(self, prompt, direction):
+        # direction is a list containing a string
+        return prompt + ", " + direction[0] + " view"
+
+    def run_experiment(self, input_image, image_fr_path=False, direction = ["back"], index=0):
         if input_image is not None:
             assert len(input_image.shape) == 4, "input_image should be a batch of images"
 
+        if self.view_dependent_prompting:
+            prompt_with_view_direc = self.append_view_direction(self.prompts, direction)
+        else:
+            prompt_with_view_direc = self.prompts
+            
+        with open('direction.txt', 'a') as file:
+            file.write(f"{prompt_with_view_direc}\n")
+        
         if self.select_diffusion_option == "df":
             text_embeddings = self.df.get_text_embeds(
-                self.prompts, self.negative_prompts
+                prompt_with_view_direc, self.negative_prompts
             )
         elif self.select_diffusion_option == "sd":
             # Uses pre-trained CLIP Embeddings; # Prompts -> text embeds
             # SHAPE OF text_embeddings [2, 77, 768]
             text_embeddings = self.sd.get_text_embeds(
-                self.prompts, self.negative_prompts, use_nfsd=self.use_nfsd
+                prompt_with_view_direc, self.negative_prompts, use_nfsd=self.use_nfsd
             )
         elif self.select_diffusion_option == "multiview_sd":
-            text_embeddings = self.multiview_sd.get_text_embeds(
-                self.prompts, self.negative_prompts, use_nfsd=self.use_nfsd
-            )
+            text_embeddings=None
+            
         elif self.select_diffusion_option == "sd_XL":
             text_embeddings = self.sd_XL.get_text_embeds(
-                self.prompts, self.negative_prompts
+                prompt_with_view_direc, self.negative_prompts
             )
         elif self.select_diffusion_option == "sd_dds_loss":
             text_embedding_source, text_embeddings = self.sd_dds_loss.get_text_embeds(
-                self.prompts_source, self.negative_prompts, self.prompts
+                self.prompts_source, self.negative_prompts, prompt_with_view_direc
             )
 
         # FIXME: this is 64 for deepfloyd
@@ -160,12 +173,12 @@ class DiffusionForTargetImg:
             if self.init_image_path is not None:
                 img = load_images(self.init_image_path, encoder_image_size, self.device)
                 # prompts can be a list of string or a single string
-                n_prompts = 1 if isinstance(self.prompts, str) else len(self.prompts)
+                n_prompts = 1 if isinstance(prompt_with_view_direc, str) else len(prompt_with_view_direc)
                 img = img.repeat(n_prompts, 1, 1, 1)
                 pred_rgb = img
             else:
                 pred_rgb = torch.zeros(
-                    (len(self.prompts), 3, encoder_image_size, encoder_image_size)
+                    (len(prompt_with_view_direc), 3, encoder_image_size, encoder_image_size)
                 )
         else:
             # resize to the encoder input image size
@@ -182,7 +195,11 @@ class DiffusionForTargetImg:
                 )
                 pred_rgb = pred_rgb.unsqueeze(0).to(self.device)
             else:
-                img = input_image.repeat(text_embeddings.shape[0] // 2, 1, 1, 1)
+                # FIX it Later
+                if self.select_diffusion_option == "multiview_sd":
+                    img = input_image.repeat(1 // 2, 1, 1, 1)
+                else:
+                    img = input_image.repeat(text_embeddings.shape[0] // 2, 1, 1, 1)
                 pred_rgb = img
 
         pred_rgb = pred_rgb.to(self.device).detach().clone().requires_grad_(True)
@@ -259,7 +276,7 @@ class DiffusionForTargetImg:
                 elif self.select_diffusion_option in ["sd"]:
                     train_step_fn = partial(self.sd.train_step, latents=latents)
                 elif self.select_diffusion_option == "multiview_sd":
-                    train_step_fn = partial(self.multiview_sd.train_step, latents=latents)
+                    train_step_fn = partial(self.multiview_sd.train_step, rgb=latents)
                 elif self.select_diffusion_option in ["sd_XL"]:
                     train_step_fn = partial(self.sd_XL.train_step, latents=latents)
             else:
@@ -284,14 +301,22 @@ class DiffusionForTargetImg:
                     rgb_decoded.save(f"{self.output_dir}/{i}_dds_loss_rgb_decoded.jpg")
 
             else:
-                # For SD, SD_XL and DeepFloyd sds Loss
-                loss, aux = train_step_fn(
-                    text_embeddings,
-                    guidance_scale=self.guidance_scale,
-                    fixed_step=self.schedule[i],
-                    return_aux=True,
-                    use_nfsd=self.use_nfsd,
-                )
+                if self.select_diffusion_option == "multiview_sd":
+                    # For SD, SD_XL and DeepFloyd sds Loss
+                    loss, aux = train_step_fn(
+                        text_embeddings=None
+                    )
+                else:
+                    # For SD, SD_XL and DeepFloyd sds Loss
+                    loss, aux = train_step_fn(
+                        text_embeddings,
+                        guidance_scale=self.guidance_scale,
+                        fixed_step=self.schedule[i],
+                        return_aux=True,
+                        use_nfsd=self.use_nfsd,
+                    )
+                
+                
                 if self.mode == "sds_image":
                     latents = aux["latents"]
                 latents.retain_grad()
