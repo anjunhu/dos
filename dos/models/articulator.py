@@ -357,10 +357,10 @@ class Articulator(BaseModel):
             elif self.view_option == "multi_view_rand":
                 # For Multi View
                 # pose shape is [num_pose, 12]
-                pose, _ = multi_view.rand_poses(self.num_pose_for_optim, self.device, radius_range=self.random_camera_radius)
+                pose, direction = multi_view.rand_poses(self.num_pose_for_optim, self.device, radius_range=self.random_camera_radius)
                 
             elif self.view_option == "multi_view_azimu":
-                pose, _ = multi_view.poses_along_azimuth(self.num_pose_for_optim, self.device, radius=self.random_camera_radius, phi_range=self.phi_range_for_optim, multi_view_option = self.multi_view_optimise_option)
+                pose, direction = multi_view.poses_along_azimuth(self.num_pose_for_optim, self.device, radius=self.random_camera_radius, phi_range=self.phi_range_for_optim, multi_view_option = self.multi_view_optimise_option)
         else:
             pose=batch["pose"]
         
@@ -396,6 +396,7 @@ class Articulator(BaseModel):
         target_img_rgb = self.diffusion_Text_to_Target_Img.run_experiment(
             input_image=renderer_outputs["image_pred"],
             image_fr_path=False,
+            direction = direction,
         )
         
         # # Inserts the new image into a dictionary
@@ -517,9 +518,9 @@ class Articulator(BaseModel):
         
         if self.view_option == "single_view":
             # Added for debugging purpose
-            pose, _ = multi_view.poses_along_azimuth_single_view(self.num_pose_for_visual, device=self.device)
+            pose, direction = multi_view.poses_along_azimuth_single_view(self.num_pose_for_visual, device=self.device)
         else:
-            pose, _ = multi_view.poses_along_azimuth(self.num_pose_for_visual, device=self.device, radius=self.random_camera_radius, phi_range=self.phi_range_for_visual, multi_view_option ='multiple_random_phi_in_batch')
+            pose, direction = multi_view.poses_along_azimuth(self.num_pose_for_visual, device=self.device, radius=self.random_camera_radius, phi_range=self.phi_range_for_visual, multi_view_option ='multiple_random_phi_in_batch')
         
         renderer_outputs = self.renderer(
             articulated_mesh,
