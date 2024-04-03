@@ -6,7 +6,7 @@ import os
 import torch
 import torchvision
 from dos.components.fuse.extractor_dino import ViTExtractor
-from dos.components.fuse.extractor_sd import process_features_and_mask, get_mask
+from dos.components.fuse.extractor_sd import process_features_and_mask, get_mask, load_model
 from tqdm import tqdm
 from dos.utils.correspondence import pairwise_sim, chunk_cosine_sim, co_pca, find_nearest_patchs, \
                                 resize, draw_correspondences_1_image, draw_correspondences_combined  #, get_n_colors
@@ -19,8 +19,8 @@ import time
 
 class ComputeCorrespond:
         
-    def __init__(self, batch_compute=False, cyc_consi_check_switch=True):
-        self.ONLY_DINO = False
+    def __init__(self, only_dino = True, batch_compute=False, cyc_consi_check_switch=True):
+        self.ONLY_DINO = only_dino
         self.DINOV1 = False
         self.DINOV2 = False if self.DINOV1 else True
         self.MODEL_SIZE = 'base'
@@ -49,12 +49,41 @@ class ComputeCorrespond:
         print(f'The ViTExtractor function took {self.end_time - self.start_time} seconds to run.')
         self.batch_compute = batch_compute
         self.cyc_consi_check_switch = cyc_consi_check_switch
+        
+        if self.ONLY_DINO == False:
+            # LOADING ODISE MODEL - needed for extracting sd features for the FUSE Model.
+            start_time = time.time()
+            # 'diffusion_ver' options are v1-5, v1-3, v1-4, v1-5, v2-1-base
+            # 'image_size' is for the sd input for the Fuse model i.e 960
+            # 'timestep' for diffusion should be in the range [0, 1000], 0 for no noise added
+            # 'block_indices' is selecting different layers from the UNet decoder for extracting sd features, only the first three are used by default.
+            self.sd_model, self.sd_aug = load_model(
+                config_path='Panoptic/odise_label_coco_50e.py',
+                diffusion_ver='v1-5',
+                image_size=960,
+                num_timesteps=100,
+                block_indices=(2, 5, 8, 11)
+            )
+            end_time = time.time()  # Record the end time
+            print(f"The ODISE model (required for sd feature extraction for FUSE model) loading took {end_time - start_time} seconds to run.\n")
 
-      
-    def compute_correspondences_sd_dino(self, img1_tensor, img1_kps, img2_tensor, model, aug, using_pil_object, index=0, files=None, category='horse', mask=False, dist='l2', thresholds=None, real_size=960):  # kps,
+              
+    def compute_correspondences_sd_dino(self, img1_tensor, img1_kps, img2_tensor, using_pil_object, index=0, files=None, category='horse', mask=False, thresholds=None, real_size=960):  # kps,
         # print('compute_correspondences func is running...')
         
-        img_size = 840 if self.DINOV2 else 240 if self.ONLY_DINO else 480    # ORIGINAL CODE # should it be 224 or 240, because 60 * stride(i.e 4) is 240
+        if self.ONLY_DINO == False:
+            model = self.sd_model
+            aug = self.sd_aug
+         
+        if self.ONLY_DINO:
+            self.FUSE_DINO = True
+        
+        if self.FUSE_DINO and not self.ONLY_DINO:
+            dist = "l2"
+        else:
+            dist = "cos"
+        
+        img_size = 840 if self.DINOV2 else 240 if self.ONLY_DINO else 480    # ORIGINAL CODE - 224 # should it be 224 or 240, because 60 * stride(i.e 4) is 240
         
         layer = 11 if self.DINOV2 else 9
         if 'l' in self.model_type:
