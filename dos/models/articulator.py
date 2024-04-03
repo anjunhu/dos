@@ -16,7 +16,6 @@ from PIL import Image, ImageDraw
 
 from dos.components.fuse.compute_correspond import \
     ComputeCorrespond  # compute_correspondences_sd_dino
-from dos.components.fuse.extractor_sd import load_model
 from dos.utils.correspondence import (draw_correspondences_1_image,
                                       padding_tensor, resize,
                                       tensor_to_matplotlib_figure)
@@ -67,7 +66,6 @@ class Articulator(BaseModel):
         phi_range_for_visual = [0, 360],
         cyc_check_img_save = False,
         bones_rotations = "bones_rotations",
-        debug_mode = False,
         using_pil_object = False,
         cyc_consi_check_switch = True,
         cyc_consi_check_dist_threshold = 15,
@@ -108,7 +106,6 @@ class Articulator(BaseModel):
         self.phi_range_for_visual = phi_range_for_visual
         self.cyc_check_img_save = cyc_check_img_save
         self.bones_rotations = bones_rotations
-        self.debug_mode = debug_mode
         self.using_pil_object = using_pil_object
         self.cyc_consi_check_switch = cyc_consi_check_switch
         self.cyc_consi_check_dist_threshold = cyc_consi_check_dist_threshold
@@ -117,23 +114,6 @@ class Articulator(BaseModel):
         self.save_individual_img = save_individual_img
         self.multi_view_optimise_option = multi_view_optimise_option
         
-        if debug_mode == False:
-            # LOADING ODISE MODEL
-            start_time = time.time()
-            # 'diffusion_ver' options are v1-5, v1-3, v1-4, v1-5, v2-1-base
-            # 'image_size' is for the sd input for the Fuse model i.e 960
-            # 'timestep' for diffusion should be in the range [0, 1000], 0 for no noise added
-            # 'block_indices' is selecting different layers from the UNet decoder for extracting sd features, only the first three are used by default.
-            self.sd_model, self.sd_aug = load_model(
-                config_path='Panoptic/odise_label_coco_50e.py',
-                diffusion_ver='v1-5',
-                image_size=960,
-                num_timesteps=100,
-                block_indices=(2, 5, 8, 11)
-            )
-            end_time = time.time()  # Record the end time
-            print(f"The Fuse model loading took {end_time - start_time} seconds to run.\n")
-
 
     def _load_shape_template(self, shape_template_path, fit_inside_unit_cube=False):
         mesh = load_mesh(shape_template_path)
@@ -196,14 +176,14 @@ class Articulator(BaseModel):
         
         if self.cyc_consi_check_switch:
             start_time = time.time()
-            rendered_image_with_kps_list, rendered_image_NO_kps_list, target_image_with_kps_list, target_image_NO_kps_list, corres_target_kps_tensor_stack, cycle_consi_image_with_kps_list, cycle_consi_kps_tensor_stack, rendered_target_image_with_wo_kps_list = self.correspond.compute_correspondences_sd_dino(img1_tensor=rendered_image, img1_kps=kps_img_resolu, img2_tensor=target_image, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
+            rendered_image_with_kps_list, rendered_image_NO_kps_list, target_image_with_kps_list, target_image_NO_kps_list, corres_target_kps_tensor_stack, cycle_consi_image_with_kps_list, cycle_consi_kps_tensor_stack, rendered_target_image_with_wo_kps_list = self.correspond.compute_correspondences_sd_dino(img1_tensor=rendered_image, img1_kps=kps_img_resolu, img2_tensor=target_image, using_pil_object=self.using_pil_object)
             end_time = time.time()  # Record the end time
             # with open('log.txt', 'a') as file:
             #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
             print(f"The compute_correspondences_sd_dino function took {end_time - start_time} seconds to run.")
         else:
             start_time = time.time()
-            rendered_image_with_kps_list, rendered_image_NO_kps_list, target_image_with_kps_list, target_image_NO_kps_list, corres_target_kps_tensor_stack, rendered_target_image_with_wo_kps_list = self.correspond.compute_correspondences_sd_dino(img1_tensor=rendered_image, img1_kps=kps_img_resolu, img2_tensor=target_image, model=self.sd_model, aug=self.sd_aug, using_pil_object=self.using_pil_object)
+            rendered_image_with_kps_list, rendered_image_NO_kps_list, target_image_with_kps_list, target_image_NO_kps_list, corres_target_kps_tensor_stack, rendered_target_image_with_wo_kps_list = self.correspond.compute_correspondences_sd_dino(img1_tensor=rendered_image, img1_kps=kps_img_resolu, img2_tensor=target_image, using_pil_object=self.using_pil_object)
             end_time = time.time()  # Record the end time
             # with open('log.txt', 'a') as file:
             #     file.write(f"The 'compute_correspondences_sd_dino' took {end_time - start_time} seconds to run.\n")    
