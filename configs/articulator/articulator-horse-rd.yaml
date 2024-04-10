@@ -22,13 +22,13 @@ model:
     body_bones_type: z_minmax_y+
     temperature: 0.05
 
-  path_to_save_images: /scratch/shared/nfs2/oishideb/nfs2/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1840_multi_view_horse_vari_target_opti_2pose_side_view_only
-  num_pose_for_optim: 2
+  path_to_save_images: /scratch/shared/nfs2/oishideb/nfs2/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1919_horse_walk_sch_800_lr_0.004_random_each_step
+  num_pose_for_optim: 1
   num_pose_for_visual: 30
   num_sample_bone_line: 4  #
   num_sample_farthest_points: 250
   mode_kps_selection: "kps_fr_sample_farthest_points" # Options are "kps_fr_sample_on_bone_line" OR "kps_fr_sample_farthest_points"
-  shape_template_path: /scratch/shared/beegfs/tomj/projects/articulator/data/synth_animals/shape_templates/cgtrader/uploads-files-2390590-Horse_Family_v01/Horse_HighPoly.obj
+  shape_template_path: /scratch/shared/nfs2/oishideb/animal_assets/uploads-files-2390590-Horse_Family_v01/Horse_HighPoly.obj
   enable_texture_predictor: False
   
   view_option: "multi_view_azimu" # Options are "multi_view_azimu"; "multi_view_rand"; "single_view"
@@ -36,7 +36,14 @@ model:
   fit_shape_template_inside_unit_cube: True # for single_view: False; for multi-view: True
   phi_range_for_optim: [0,360] # [90,-90]
   phi_range_for_visual: [0,360]
-  two_side_views_only: True # Two side view poses along the azimuth
+  
+  # Options are
+  # "random_phi_each_step_along_azimuth"
+  # "alternate_2_side_views_each_step_along_azimuth"
+  # "alternate_4_side_views_each_step_along_azimuth"
+  # "multiple_random_phi_in_batch"    # if selected this, then specify the no. here - "num_pose_for_optim"
+  # "2_side_views_only_in_batch"      # if selected this, then specify the no. here - "num_pose_for_optim"
+  multi_view_optimise_option: "random_phi_each_step_along_azimuth"
 
   bones_rotations: "bones_rotations" # Options are "bones_rotations"; "DUMMY_bones_rotations"; "NO_bones_rotations"
   debug_mode: False # IN DEBUG MODE, THIS WILL SWITCH OFF THE LOADING TO FUSE'S STABLE DIFFUSION MODEL
@@ -67,7 +74,7 @@ model:
   diffusion_Text_to_Target_Img:  # variable Name
     _target_: dos.components.diffusion_model_text_to_image.diffusion_sds.DiffusionForTargetImg # Class Name
     cache_dir: /work/oishideb/cache/huggingface_hub
-    output_dir: /scratch/shared/nfs2/oishideb/nfs2/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1840_multi_view_horse_vari_target_opti_2pose_side_view_only/sd_sds_output/
+    output_dir: /scratch/shared/nfs2/oishideb/nfs2/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1919_horse_walk_sch_800_lr_0.004_random_each_step/sd_sds_output/
     init_image_path: /users/oishideb/laam/dos/examples/data/cow.png
     vis_name: cow-sds_latent-l2_image-600-lr1e-1.jpg
     # prompts: 'A photograph of a single cow running very fast, back view.' #.The photo should have a grey background.' # DOS-1338  opti multi_view_azimu, GS20, Num_Infe50
@@ -75,7 +82,8 @@ model:
     # negative_prompts: 'front view, side view, tail' #  , cartoon, dead, shadow, reflection'     # the string shouldn't be in a square brackets ['']
     # prompts: 'A photograph of a fully white cow running very fast, back view. All four legs should be visible. No cow tail'
     # prompts: 'A photograph of a horse stretching two front legs, side view. All four legs should be visible. No tail' # back view
-    prompts: 'A photograph of a horse walking. All four legs should be visible. No tail' #, side view.
+    prompts: 'A photograph of a horse walking'
+    view_dependent_prompting: True
     mode: sds_latent # Options are sds_image OR sds_latent-l2_image # sds_latent
     lr: 0.1  # For DeepFloyd+SDS
     lr_l2: 0.1  # For SD+SDS  1e4
@@ -86,14 +94,14 @@ model:
     select_diffusion_option: 'sd' # Options are sd, sd_XL, df, sd_dds_loss  # by default is sds loss
     image_fr_path: False
     save_visuals_every_n_iter: 2
-    schedule: "[600] * 50"
+    schedule: "[800] * 50"
 
 renderer:   # variable Name
   _target_: dos.modules.renderer.Renderer # Class Name
   cam_pos_z_offset: 0.0
   fov: 28.84
 
-path_to_save_img_per_iteration: /scratch/shared/nfs2/oishideb/nfs2/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1840_multi_view_horse_vari_target_opti_2pose_side_view_only
+path_to_save_img_per_iteration: /scratch/shared/nfs2/oishideb/nfs2/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1919_horse_walk_sch_800_lr_0.004_random_each_step
 checkpoint_root_dir: /work/oishideb/articulation_cow_chkpts
 experiment_name: articulator-dev-0.1
 save_each_iteration: True
@@ -105,9 +113,9 @@ device: cuda:0
 # resume: True
 
 # learning_rate: 1e-9  # tried with 0.01, 0.5, 0.9, 1;   # 1e-4   # DOS_1432
-learning_rate: 1e-6           # DOS_1433
+learning_rate: 0.004          # DOS_1433
 # for debugging
-num_iterations: 10000
+num_iterations: 600
 num_vis_iterations: 1
 num_eval_iterations: 10
 save_checkpoint_freq: 50

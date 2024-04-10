@@ -10,6 +10,8 @@ import torch
 import torchvision
 from PIL import Image
 
+from dos.utils.config import config_to_primitive
+
 
 def tensor_to_image(tensor, chw=True):
     """
@@ -244,3 +246,67 @@ def safe_batch_to_device(batch, *args, **kwargs):
         else:
             out_batch[k] = v
     return out_batch
+
+
+def create_video(dir_path, out_video_name):
+    out_path = dir_path
+    if not os.path.exists(out_path):
+    	os.makedirs(out_path)
+    
+    out_video_full_path = out_path + out_video_name
+    def sort_numeric(file):
+        # Extract numbers from the filename and convert them to integers
+        return int(''.join(filter(str.isdigit, file)))
+    # Ensure images are processed in numerical order
+    pre_imgs = sorted(os.listdir(path), key=sort_numeric)
+    # print(pre_imgs)
+    img = []
+    # Limiting the number of images
+    for i, item in tqdm(enumerate(pre_imgs)):    # to specify the end image (pre_imgs[:140])
+        item = os.path.join(path, item)
+        print(item)
+        img.append(item)
+    # print(img)
+    cv2_fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    # print(img[0])
+    frame = cv2.imread(img[0])
+    #print("frame's type", type(frame))
+    size = list(frame.shape)
+    #print("type", type(size))
+    #print('size', size)
+    del size[2]
+    size.reverse()
+    #print("size", size)
+    # Reducing fps to make video slower - frames per sec (fps) is 5
+    video = cv2.VideoWriter(out_video_full_path, cv2_fourcc, 3, (size[0],size[1]))
+    #video = cv2.VideoWriter(out_video_full_path, apiPreference = 0, fourcc = cv2_fourcc, fps = 25, frameSize = size, isColor = True) #output video name, fourcc, fps, size
+    for i in range(len(img)): 
+        video.write(cv2.imread(img[i]))
+        print('frame ', i, ' of ', len(img))
+    video.release()
+    print('outputed video to ', out_path)
+    
+
+def C(value, epoch: int, global_step: int) -> float:
+    if isinstance(value, int) or isinstance(value, float):
+        pass
+    else:
+        value = config_to_primitive(value)
+        if not isinstance(value, list):
+            raise TypeError("Scalar specification only supports list, got", type(value))
+        if len(value) == 3:
+            value = [0] + value
+        assert len(value) == 4
+        start_step, start_value, end_value, end_step = value
+        if isinstance(end_step, int):
+            current_step = global_step
+            value = start_value + (end_value - start_value) * max(
+                min(1.0, (current_step - start_step) / (end_step - start_step)), 0.0
+            )
+        elif isinstance(end_step, float):
+            current_step = epoch
+            value = start_value + (end_value - start_value) * max(
+                min(1.0, (current_step - start_step) / (end_step - start_step)), 0.0
+            )
+    return value
+    
