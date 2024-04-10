@@ -140,10 +140,7 @@ class DiffusionForTargetImg:
             prompt_with_view_direc = self.append_view_direction(self.prompts, direction)
         else:
             prompt_with_view_direc = self.prompts
-            
-        with open('direction.txt', 'a') as file:
-            file.write(f"{prompt_with_view_direc}\n")
-        
+    
         if self.select_diffusion_option == "df":
             text_embeddings = self.df.get_text_embeds(
                 prompt_with_view_direc, self.negative_prompts
@@ -302,7 +299,6 @@ class DiffusionForTargetImg:
 
             else:
                 if self.select_diffusion_option == "mv_dream":
-                    # For SD, SD_XL and DeepFloyd sds Loss
                     loss, aux = train_step_fn(
                         text_embeddings=None
                     )
