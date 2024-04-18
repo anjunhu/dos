@@ -189,6 +189,7 @@ class Trainer:
     def forward(
         self,
         batch,
+        num_batches,
         neptune_run=None,
         log_prefix=None,
         log=False,
@@ -203,7 +204,7 @@ class Trainer:
 
         # rotation, translation, forward_aux = self.model(batch)
         
-        model_outputs = self.model(batch) 
+        model_outputs = self.model(batch, num_batches, iteration) 
         
         metrics_dict = self.model.get_metrics_dict(model_outputs, batch)
         
@@ -266,8 +267,10 @@ class Trainer:
                 visualize = True
             else:
                 visualize = False
+            num_batches += 1
             loss, model_outputs = self.forward(
                 batch,
+                num_batches,
                 neptune_run=neptune_run,
                 log_prefix="val",
                 visualize=visualize,
@@ -275,7 +278,6 @@ class Trainer:
                 num_visuals=self.evaluate_num_visuals,
             )
             total_loss += loss
-            num_batches += 1
             
             # if not os.path.exists(f'/users/oishideb/dos_output_files/cow/all_iteration_Val/batch_size_0'):
             #     os.makedirs(f'/users/oishideb/dos_output_files/cow/all_iteration_Val/batch_size_0')
@@ -339,6 +341,7 @@ class Trainer:
 
         self.model.train()
         
+        num_batches = 0
         # Training loop
         print('len train_loader', len(train_loader))
         for run_iteration, batch in tqdm(enumerate(train_loader)):
@@ -355,9 +358,11 @@ class Trainer:
                 break
 
             visualize = iteration % self.num_vis_iterations == 0
+            num_batches += 1
             
             loss, model_outputs = self.forward(
                 batch,
+                num_batches,
                 neptune_run=neptune_run,
                 log_prefix="train",
                 visualize=visualize,
