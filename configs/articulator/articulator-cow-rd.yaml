@@ -26,7 +26,7 @@ model:
     body_bones_type: z_minmax_y+
     temperature: 0.05
 
-  path_to_save_images: /scratch/shared/nfs2/oishideb/nfs2/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1932_cow_walk_view_dep_prom_rand_initi
+  path_to_save_images: /scratch/shared/nfs2/oishideb/nfs2/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1959_cow_walk_mv_dream
   num_pose_for_optim: 1
   num_pose_for_visual: 20
   num_sample_bone_line: 4  # 
@@ -45,8 +45,9 @@ model:
   # "random_phi_each_step_along_azimuth"
   # "alternate_2_side_views_each_step_along_azimuth"
   # "alternate_4_side_views_each_step_along_azimuth"
-  # "multiple_random_phi_in_batch"    # if selected this, then specify the no. here - "num_pose_for_optim"
-  # "2_side_views_only_in_batch"      # if selected this, then specify the no. here - "num_pose_for_optim"
+  # "multiple_random_phi_in_batch"      # if selected this, then specify the no. here - "num_pose_for_optim"
+  # "2_side_views_only_in_batch"        # if selected this, then specify the no. here - "num_pose_for_optim"
+  # "guidance_and_rand_views_in_batch"  # if selected this, then specify the no. here - "num_pose_for_optim" as 2
   multi_view_optimise_option: "random_phi_each_step_along_azimuth"
 
   bones_rotations: "bones_rotations" # Options are "bones_rotations"; "DUMMY_bones_rotations"; "NO_bones_rotations"
@@ -68,7 +69,7 @@ model:
     _target_: dos.predictors.articulation_predictor.ArticulationPredictor  # Class Name
     size_dataset: 49
     num_bones: 20
-    degree: 10
+    degree: 70
     
   renderer:   # variable Name
     _target_: dos.modules.renderer.Renderer # Class Name
@@ -78,7 +79,7 @@ model:
   diffusion_Text_to_Target_Img:  # variable Name
     _target_: dos.components.diffusion_model_text_to_image.diffusion_sds.DiffusionForTargetImg # Class Name
     cache_dir: /scratch/shared/nfs2/oishideb/nfs2/.cache/huggingface_hub    # /work/oishideb/cache/huggingface_hub
-    output_dir: /scratch/shared/nfs2/oishideb/nfs2/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1932_cow_walk_view_dep_prom_rand_initi/sd_sds_output/
+    output_dir: /scratch/shared/nfs2/oishideb/nfs2/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1959_cow_walk_mv_dream/sd_sds_output/
     init_image_path: /users/oishideb/laam/dos/examples/data/cow.png
     vis_name: cow-sds_latent-l2_image-600-lr1e-1.jpg
     prompts_source: '' #.The photo should have a grey background.' # DOS-1339  opti multi_view_azimu, GS20, Num_Infe50
@@ -92,7 +93,7 @@ model:
     num_inference_steps: 40
     guidance_scale: 40
     dds: False
-    select_diffusion_option: 'sd' # Options are sd, sd_XL, df, sd_dds_loss, mv_dream  # by default is sds loss
+    select_diffusion_option: 'mv_dream' # Options are sd, sd_XL, df, sd_dds_loss, mv_dream  # by default is sds loss
     image_fr_path: False
     save_visuals_every_n_iter: 2
     schedule: "[600] * 50"
@@ -102,7 +103,7 @@ renderer:   # variable Name
   cam_pos_z_offset: 0.0
   fov: 28.84
 
-path_to_save_img_per_iteration: /scratch/shared/nfs2/oishideb/nfs2/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1932_cow_walk_view_dep_prom_rand_initi
+path_to_save_img_per_iteration: /scratch/shared/nfs2/oishideb/nfs2/dos_output_files/cow/all_iteration_Train/batch_size_0/DOS-1959_cow_walk_mv_dream
 checkpoint_root_dir: /work/oishideb/articulation_cow_chkpts
 experiment_name: articulator-dev-0.1
 save_each_iteration: True
@@ -114,9 +115,9 @@ device: cuda:0
 # resume: True
 
 # learning_rate: 1e-9  # tried with 0.01, 0.5, 0.9, 1;   # 1e-4   # DOS_1432
-learning_rate: 0.007           # DOS_1433
+learning_rate: 0.01           # DOS_1433
 # for debugging
-num_iterations: 200
+num_iterations: 150
 num_vis_iterations: 1
 num_eval_iterations: 10
 save_checkpoint_freq: 50
