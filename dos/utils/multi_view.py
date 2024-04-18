@@ -110,7 +110,29 @@ def poses_helper_func(size, device, phis, thetas, radius_range=[2.5, 2.5], angle
     
     return poses, dirs
 
-def poses_along_azimuth(size, device, radius=2.5, theta=90, phi_range=[0, 360], multi_view_option='multiple_random_phi_in_batch'):
+# Global variable to store the state
+phis_state = {
+    "last_phis": None,
+    "last_update_iteration": -1,
+    "long_update_interval": 15,  # Interval for side views
+    "short_update_interval": 2,  # Interval for all other views
+    "update_interval": 15
+}
+
+def initialize_phis_state(device):
+    """ Initialize the phis state with a side view angle of 90 degrees. """
+    global phis_state
+    phis_state["last_phis"] = torch.tensor([np.deg2rad(90)], dtype=torch.float, device=device)
+    phis_state["last_update_iteration"] = 0  # Assume starting at iteration 0
+
+    
+def is_side_view(phis, tolerance=np.deg2rad(1), device='cpu'):
+    ninety_degrees = torch.tensor(np.deg2rad(90), dtype=torch.float, device=device)
+    minus_ninety_degrees = torch.tensor(np.deg2rad(-90), dtype=torch.float, device=device)
+    return torch.any(torch.isclose(phis, ninety_degrees, atol=tolerance)) or torch.any(torch.isclose(phis, minus_ninety_degrees, atol=tolerance))
+
+
+def poses_along_azimuth(size, device, batch_number=0, iteration=0,  radius=2.5, theta=90, phi_range=[0, 360], multi_view_option='multiple_random_phi_in_batch'):
     ''' generate random poses from an orbit camera along uniformly distributed azimuth and fixed elevation
     Args:
         size: batch size of generated poses.
@@ -120,21 +142,64 @@ def poses_along_azimuth(size, device, radius=2.5, theta=90, phi_range=[0, 360], 
     Return:
         poses: [size, 4, 4]
     '''
-
+    global phis_state  # Reference the global variable
+    
+    initialize_phis_state(device)
+    
     theta = np.deg2rad(theta)
     
     if multi_view_option == '2_side_views_only_in_batch':
         # Side view 1 at 90 degrees and side view 2 at -90 degrees
         phis = torch.tensor([np.deg2rad(90), np.deg2rad(-90)], dtype=torch.float, device=device)
+        
+    elif multi_view_option == 'guidance_and_rand_views_in_batch':
+        if batch_number == 0:
+            phis = torch.tensor([np.deg2rad(90)], dtype=torch.float, device=device)  # Only one side view for the odd batches
+        else:
+            phis = torch.rand(size, device=device) * (np.deg2rad(phi_range[1]) - np.deg2rad(phi_range[0])) + np.deg2rad(phi_range[0])
+    
     elif multi_view_option == 'random_phi_each_step_along_azimuth':
-        phis = torch.rand(size, device=device) * (phi_range[1] - phi_range[0]) + phi_range[0]
+        
+        # Usage within the update logic
+        if phis_state["last_phis"] is not None:
+            # Determine if the last phis value is a side view
+            if is_side_view(phis_state["last_phis"], device=device):
+                current_update_interval = phis_state["long_update_interval"]
+            else:
+                current_update_interval = phis_state["short_update_interval"]
+        else:
+            # No last_phis means start with a long interval assuming first is a side view
+            current_update_interval = phis_state["long_update_interval"]
+
+        # Check if it's time to update the phis value
+        if iteration - phis_state["last_update_iteration"] >= current_update_interval or phis_state["last_phis"] is None:
+            # Generate new phis and update the state
+            phis = torch.rand(size, device=device) * (np.deg2rad(phi_range[1]) - np.deg2rad(phi_range[0])) + np.deg2rad(phi_range[0])
+            phis_state["last_phis"] = phis
+            phis_state["last_update_iteration"] = iteration
+        else:
+            # Use the last stored phis value
+            phis = phis_state["last_phis"] 
+    
     elif multi_view_option == 'alternate_2_side_views_each_step_along_azimuth':
-        phis = get_2_alternating_phi(device)
+        # phis = get_2_alternating_phi(device)
+        
+        if iteration - phis_state["last_update_iteration"] >= phis_state["update_interval"] or phis_state["last_phis"] is None:
+            # Generate new phis and update the state
+            phis = get_2_alternating_phi(device)
+            
+            phis_state["last_phis"] = phis
+            phis_state["last_update_iteration"] = iteration
+        else:
+            # Use the last stored phis value
+            phis = phis_state["last_phis"]
+        
     elif multi_view_option == 'alternate_4_side_views_each_step_along_azimuth':
         phis = get_4_alternating_phi(device)
+        
     elif multi_view_option == 'multiple_random_phi_in_batch':                       
         phi_range = np.deg2rad(phi_range)
-        # For azimuth rotation (phi), we will create a sequence of values within the specified range
+        # For azimuth rotation (phi), will create a sequence of values within the specified range
         # Do not include endpoint (as in np.linspace) to avoid duplicate values
         phis = torch.linspace(phi_range[0], phi_range[1], steps=size+1, device=device)[:size]
         
