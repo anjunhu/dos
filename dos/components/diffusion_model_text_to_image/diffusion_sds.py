@@ -107,10 +107,8 @@ class DiffusionForTargetImg:
 
         if self.select_diffusion_option == "df":
             self.df = DeepFloyd(self.device, cache_dir, torch_dtype=torch_dtype)
-        elif self.select_diffusion_option == "sd":
+        elif self.select_diffusion_option in ["sd", "mv_dream"]:
             self.sd = StableDiffusion(self.device, cache_dir, torch_dtype=torch_dtype)
-        elif self.select_diffusion_option =="mv_dream":
-            self.mv_dream = MultiviewDiffusionGuidance(self.device, cache_dir, torch_dtype=torch_dtype)
         elif self.select_diffusion_option == "sd_XL":
             self.sd_XL = StableDiffusionXL(self.device, cache_dir, torch_dtype=torch_dtype)
         elif self.select_diffusion_option == "sd_dds_loss":
@@ -122,6 +120,9 @@ class DiffusionForTargetImg:
                 f"Unknown diffusion option: {self.select_diffusion_option}"
             )
 
+        if self.select_diffusion_option =="mv_dream":
+            self.mv_dream = MultiviewDiffusionGuidance(self.device, cache_dir, torch_dtype=torch_dtype)
+            
         self.image_fr_path = image_fr_path
         self.dds = dds
 
@@ -132,7 +133,7 @@ class DiffusionForTargetImg:
         # direction is a list containing a string
         return prompt + ", " + direction[0] + " view"
 
-    def run_experiment(self, input_image, image_fr_path=False, direction = ["back"], index=0):
+    def run_experiment(self, input_image, image_fr_path=False, direction = ["back"], index=0, c2w = None):
         if input_image is not None:
             assert len(input_image.shape) == 4, "input_image should be a batch of images"
 
@@ -145,14 +146,16 @@ class DiffusionForTargetImg:
             text_embeddings = self.df.get_text_embeds(
                 prompt_with_view_direc, self.negative_prompts
             )
-        elif self.select_diffusion_option == "sd":
+        elif self.select_diffusion_option in ["sd", "mv_dream"]:
             # Uses pre-trained CLIP Embeddings; # Prompts -> text embeds
             # SHAPE OF text_embeddings [2, 77, 768]
             text_embeddings = self.sd.get_text_embeds(
                 prompt_with_view_direc, self.negative_prompts, use_nfsd=self.use_nfsd
             )
-        elif self.select_diffusion_option == "mv_dream":
-            text_embeddings=None
+        # elif self.select_diffusion_option == "mv_dream":
+        #     text_embeddings=self.sd.get_text_embeds(
+        #         prompt_with_view_direc, self.negative_prompts, use_nfsd=self.use_nfsd
+        #     )
             
         elif self.select_diffusion_option == "sd_XL":
             text_embeddings = self.sd_XL.get_text_embeds(
@@ -192,11 +195,7 @@ class DiffusionForTargetImg:
                 )
                 pred_rgb = pred_rgb.unsqueeze(0).to(self.device)
             else:
-                # FIX it Later
-                if self.select_diffusion_option == "mv_dream":
-                    img = input_image.repeat(1 // 2, 1, 1, 1)
-                else:
-                    img = input_image.repeat(text_embeddings.shape[0] // 2, 1, 1, 1)
+                img = input_image.repeat(text_embeddings.shape[0] // 2, 1, 1, 1)
                 pred_rgb = img
 
         pred_rgb = pred_rgb.to(self.device).detach().clone().requires_grad_(True)
@@ -213,7 +212,7 @@ class DiffusionForTargetImg:
             if self.select_diffusion_option == "sd":
                 latents = self.sd.encode_imgs(pred_rgb_512)
             if self.select_diffusion_option == "mv_dream":
-                latents = self.mv_dream.encode_imgs(pred_rgb_512)
+                latents = self.sd.encode_imgs(pred_rgb_512)     # using sd func
             if self.select_diffusion_option == "sd_XL":
                 latents = self.sd_XL.encode_imgs(pred_rgb_512)
             elif self.select_diffusion_option == "sd_dds_loss":
@@ -273,7 +272,7 @@ class DiffusionForTargetImg:
                 elif self.select_diffusion_option in ["sd"]:
                     train_step_fn = partial(self.sd.train_step, latents=latents)
                 elif self.select_diffusion_option == "mv_dream":
-                    train_step_fn = partial(self.mv_dream.train_step, rgb=latents)
+                    train_step_fn = partial(self.mv_dream.train_step, rgb=latents, c2w=c2w)    #
                 elif self.select_diffusion_option in ["sd_XL"]:
                     train_step_fn = partial(self.sd_XL.train_step, latents=latents)
             else:
@@ -298,20 +297,20 @@ class DiffusionForTargetImg:
                     rgb_decoded.save(f"{self.output_dir}/{i}_dds_loss_rgb_decoded.jpg")
 
             else:
-                if self.select_diffusion_option == "mv_dream":
-                    loss, aux = train_step_fn(
-                        text_embeddings=None
-                    )
-                else:
-                    # For SD, SD_XL and DeepFloyd sds Loss
-                    loss, aux = train_step_fn(
-                        text_embeddings,
-                        guidance_scale=self.guidance_scale,
-                        fixed_step=self.schedule[i],
-                        return_aux=True,
-                        use_nfsd=self.use_nfsd,
-                    )
+                # if self.select_diffusion_option == "mv_dream":
+                #     loss, aux = train_step_fn(
+                #         text_embeddings=None
+                #     )
+                # else:
                 
+                # For SD, mv_dream, SD_XL and DeepFloyd sds Loss
+                loss, aux = train_step_fn(
+                    text_embeddings=text_embeddings,
+                    guidance_scale=self.guidance_scale,
+                    fixed_step=self.schedule[i],
+                    return_aux=True,
+                    use_nfsd=self.use_nfsd,
+                )
                 
                 if self.mode == "sds_image":
                     latents = aux["latents"]
