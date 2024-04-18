@@ -123,7 +123,7 @@ class Articulator(BaseModel):
         return mesh
 
     def compute_correspondences(
-        self, articulated_mesh, pose, renderer, bones, rendered_mask, rendered_image, target_image
+        self, articulated_mesh, mvp, renderer, bones, rendered_mask, rendered_image, target_image
     ):
         # 1. Sample keypoints from the rendered image
         #    - find the closest visible point on the articulated_mesh in 3D (the visibility is done in 2D)
@@ -132,19 +132,6 @@ class Articulator(BaseModel):
         # 2. Find corresponding target keypoints using Fuse method. (TODO: some additional tricks e.g. optimal transport etc.)
         # 3. Compute cycle consistency check
         
-        start_time = time.time()
-        # get visible vertices
-        mvp, _, _ = geometry_utils.get_camera_extrinsics_and_mvp_from_pose(
-            pose,
-            renderer.fov,
-            renderer.znear,
-            renderer.zfar,
-            renderer.cam_pos_z_offset,
-        )
-        end_time = time.time()
-        # with open('log.txt', 'a') as file:
-        #     file.write(f"The 'get_camera_extrinsics_and_mvp_from_pose' compute took {end_time - start_time} seconds to run.\n")
-        print(f"The 'get_camera_extrinsics_and_mvp_from_pose' function took {end_time - start_time} seconds to run.")
         
         start_time = time.time()
         # All the visible_vertices in 2d
@@ -256,7 +243,7 @@ class Articulator(BaseModel):
         return output_dict
 
     
-    def forward(self, batch):
+    def forward(self, batch, num_batches, iteration):
         
         batch_size = batch["image"].shape[0]
         if self.shape_template is not None:
@@ -337,10 +324,10 @@ class Articulator(BaseModel):
             elif self.view_option == "multi_view_rand":
                 # For Multi View
                 # pose shape is [num_pose, 12]
-                pose, direction = multi_view.rand_poses(self.num_pose_for_optim, self.device, radius_range=self.random_camera_radius)
+                pose, direction = multi_view.rand_poses(self.num_pose_for_optim, self.device, iteration=iteration, radius_range=self.random_camera_radius)
                 
             elif self.view_option == "multi_view_azimu":
-                pose, direction = multi_view.poses_along_azimuth(self.num_pose_for_optim, self.device, radius=self.random_camera_radius, phi_range=self.phi_range_for_optim, multi_view_option = self.multi_view_optimise_option)
+                pose, direction = multi_view.poses_along_azimuth(self.num_pose_for_optim, self.device, batch_number=num_batches, iteration=iteration, radius=self.random_camera_radius, phi_range=self.phi_range_for_optim, multi_view_option = self.multi_view_optimise_option)
         else:
             pose=batch["pose"]
         
@@ -359,11 +346,26 @@ class Articulator(BaseModel):
             # CHANGED IT
             # background=background,
         )
-
         end_time = time.time()  # Record the end time
         # with open('log.txt', 'a') as file:
         #     file.write(f"The 'renderer' took {end_time - start_time} seconds to run.\n")
         print(f"The renderer function took {end_time - start_time} seconds to run.")
+        
+        start_time = time.time()
+        # get visible vertices
+        mvp, w2c, _ = geometry_utils.get_camera_extrinsics_and_mvp_from_pose(
+            pose,
+            self.renderer.fov,
+            self.renderer.znear,
+            self.renderer.zfar,
+            self.renderer.cam_pos_z_offset,
+        )
+        end_time = time.time()
+        # with open('log.txt', 'a') as file:
+        #     file.write(f"The 'get_camera_extrinsics_and_mvp_from_pose' compute took {end_time - start_time} seconds to run.\n")
+        print(f"The 'get_camera_extrinsics_and_mvp_from_pose' function took {end_time - start_time} seconds to run.")
+        
+        
         
         # Creates an empty tensor to hold the final result
         # all_generated_target_img shape is [num_pose, 3, 256, 256]
@@ -372,11 +374,19 @@ class Articulator(BaseModel):
         
         # For Debugging purpose, save all the poses before optimisation
         self.save_all_poses_before_optimisation(pose, renderer_outputs, self.path_to_save_images)
+        
+        mv_dream = False
+        if mv_dream:
+            rendered_image = renderer_outputs["image_pred"].repeat(4, 1, 1, 1)
+        else:
+            rendered_image = renderer_outputs["image_pred"]
+        
         # GENERATING TARGET IMAGES USING DIFFUSION (SD or DF)
         target_img_rgb = self.diffusion_Text_to_Target_Img.run_experiment(
-            input_image=renderer_outputs["image_pred"],
+            input_image=rendered_image,
             image_fr_path=False,
             direction = direction,
+            c2w = w2c.permute(0, 2, 1),     # Transpose the 3D matrix
         )
         
         # # Inserts the new image into a dictionary
@@ -403,7 +413,7 @@ class Articulator(BaseModel):
         # compute_correspondences for keypoint loss
         correspondences_dict = self.compute_correspondences(
             articulated_mesh,
-            pose,                                      # batch["pose"].shape is torch.Size([Batch size, 12])
+            mvp,                                      # batch["pose"].shape is torch.Size([Batch size, 12])
             self.renderer,
             aux["posed_bones"],                        # predicted articulated bones
             #bones_predictor_outputs["bones_pred"],    # this is a rest pose    # bones_predictor_outputs["bones_pred"].shape is torch.Size([4, 20, 2, 3]), 4 is batch size, 20 is number of bones, 2 are the two endpoints of the bones and 3 means the 3D point defining one of the end points of the line segment in 3D that defines the bone 
