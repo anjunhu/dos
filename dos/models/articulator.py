@@ -18,7 +18,8 @@ from dos.components.fuse.compute_correspond import \
     ComputeCorrespond  # compute_correspondences_sd_dino
 from dos.utils.correspondence import (draw_correspondences_1_image,
                                       padding_tensor, resize,
-                                      tensor_to_matplotlib_figure)
+                                      tensor_to_matplotlib_figure,
+                                      draw_correspondences_combined)
 
 from ..components.diffusion_model_text_to_image.diffusion_sds import \
     DiffusionForTargetImg
@@ -157,6 +158,7 @@ class Articulator(BaseModel):
         target_image_with_kps_list_after_cyc_check = []
         rendered_image_with_kps_list_after_cyc_check =[]
         cycle_consi_image_with_kps_list = []
+        cyc_check_combined_image_list = []
         
         # rendered_image = nn_functional.interpolate(rendered_image, size=(840, 840), mode='bilinear', align_corners=False)
         # target_image = nn_functional.interpolate(target_image, size=(840, 840), mode='bilinear', align_corners=False)
@@ -214,14 +216,26 @@ class Articulator(BaseModel):
                     target_image_PIL = torchvision.transforms.functional.to_pil_image(target_image[index])
                     target_image_PIL = resize(target_image_PIL, 840, resize=True, to_pil=True)
                     
-                    rendered_image_with_kps_cyc_check = draw_correspondences_1_image(kps_img_resolu_filtered[index], rendered_image_PIL) #, color='yellow')              #[-6:]
-                    target_image_with_kps_cyc_check = draw_correspondences_1_image(corres_target_kps_filtered[index], target_image_PIL) #, color='yellow')              #[-6:]
+                    
+                    cyc_check_combined_image = draw_correspondences_combined(kps_img_resolu_filtered[index], corres_target_kps_filtered[index], rendered_image_PIL, target_image_PIL)
+                    cyc_check_combined_image_list.append(cyc_check_combined_image)
+                    
+                    # # SAVE CYCLE CONSISTENCY IMAGES
+                    # if not os.path.exists(f'{self.path_to_save_images}/cyc_check_combined_image'):
+                    #     os.makedirs(f'{self.path_to_save_images}/cyc_check_combined_image')
+                    # cyc_check_combined_image_list[index].save(f'{self.path_to_save_images}/cyc_check_combined_image/{index}_cyc_check_combined_image.png', bbox_inches='tight')
+            
+                    
+                    cyc_consi_img_save_indiv = False
+                    if cyc_consi_img_save_indiv:
+                        rendered_image_with_kps_cyc_check = draw_correspondences_1_image(kps_img_resolu_filtered[index], rendered_image_PIL) #, color='yellow')              #[-6:]
+                        target_image_with_kps_cyc_check = draw_correspondences_1_image(corres_target_kps_filtered[index], target_image_PIL) #, color='yellow')              #[-6:]
 
-                    rendered_image_with_kps_list_after_cyc_check.append(rendered_image_with_kps_cyc_check)
-                    target_image_with_kps_list_after_cyc_check.append(target_image_with_kps_cyc_check)
+                        rendered_image_with_kps_list_after_cyc_check.append(rendered_image_with_kps_cyc_check)
+                        target_image_with_kps_list_after_cyc_check.append(target_image_with_kps_cyc_check)
 
-                    # SAVE CYCLE CONSISTENCY IMAGES
-                    self.save_cyc_consi_check_images(cycle_consi_image_with_kps_list[index], rendered_image_with_kps_cyc_check, target_image_with_kps_cyc_check, index)
+                        # SAVE CYCLE CONSISTENCY IMAGES
+                        self.save_cyc_consi_check_images(cycle_consi_image_with_kps_list[index], rendered_image_with_kps_cyc_check, target_image_with_kps_cyc_check, index)
         
             
         output_dict = {
@@ -235,6 +249,7 @@ class Articulator(BaseModel):
         "rendered_image_with_kps_list_after_cyc_check": rendered_image_with_kps_list_after_cyc_check,
         "target_image_with_kps_list_after_cyc_check": target_image_with_kps_list_after_cyc_check,
         "rendered_target_image_with_wo_kps_list": rendered_target_image_with_wo_kps_list,
+        "cyc_check_combined_image_list": cyc_check_combined_image_list,
         }        
         
         ## Saving multiple random poses with and without keypoints visualisation
@@ -565,24 +580,28 @@ class Articulator(BaseModel):
             
             
             if (self.cyc_consi_check_switch & self.cyc_check_img_save):
+                dir_path = f'{path_to_save_img_per_iteration}/cyc_check_combined_image_list/{index}_pose'
+                os.makedirs(dir_path, exist_ok=True)
+                model_outputs["cyc_check_combined_image_list"][index].save(f'{dir_path}/{iteration}_cyc_check_combined_image_list.png', bbox_inches='tight')
+            
                 
-                # This image is a Matplotlib Object
-                dir_path = f'{path_to_save_img_per_iteration}/cycle_consi/{index}_pose'
-                os.makedirs(dir_path, exist_ok=True)
-                plt.gcf().set_facecolor('grey')
-                model_outputs["cycle_consi_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_cycle_consi.png', bbox_inches='tight')
+            #     # This image is a Matplotlib Object
+            #     dir_path = f'{path_to_save_img_per_iteration}/cycle_consi/{index}_pose'
+            #     os.makedirs(dir_path, exist_ok=True)
+            #     plt.gcf().set_facecolor('grey')
+            #     model_outputs["cycle_consi_image_with_kps"][index].savefig(f'{dir_path}/{iteration}_cycle_consi.png', bbox_inches='tight')
 
-                # This image is a Matplotlib Object
-                dir_path = f'{path_to_save_img_per_iteration}/rendered_image_with_kps_list_after_cyc_check/{index}_pose'
-                os.makedirs(dir_path, exist_ok=True)
-                plt.gcf().set_facecolor('grey')
-                model_outputs["rendered_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_rendered_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
+            #     # This image is a Matplotlib Object
+            #     dir_path = f'{path_to_save_img_per_iteration}/rendered_image_with_kps_list_after_cyc_check/{index}_pose'
+            #     os.makedirs(dir_path, exist_ok=True)
+            #     plt.gcf().set_facecolor('grey')
+            #     model_outputs["rendered_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_rendered_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
 
-                # This image is a Matplotlib Object
-                dir_path = f'{path_to_save_img_per_iteration}/target_image_with_kps_list_after_cyc_check/{index}_pose'
-                os.makedirs(dir_path, exist_ok=True)
-                plt.gcf().set_facecolor('grey')
-                model_outputs["target_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_target_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
+            #     # This image is a Matplotlib Object
+            #     dir_path = f'{path_to_save_img_per_iteration}/target_image_with_kps_list_after_cyc_check/{index}_pose'
+            #     os.makedirs(dir_path, exist_ok=True)
+            #     plt.gcf().set_facecolor('grey')
+            #     model_outputs["target_image_with_kps_list_after_cyc_check"][index].savefig(f'{dir_path}/{iteration}_target_image_with_kps_list_after_cyc_check.png', bbox_inches='tight')
 
             end_time = time.time()  # Record the end time
             print(f"The 'Saving img for every iterations' took {end_time - start_time} seconds to run.")
