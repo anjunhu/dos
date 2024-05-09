@@ -31,7 +31,7 @@ class MultiviewDiffusionGuidance(nn.Module):
         self.max_step_percent = 0.98
         self.camera_condition_type = "rotation"
         self.view_dependent_prompting = False
-        self.n_view = 1 # 4
+        self.n_view = 4 # 4
         self.image_size = 256
         self.recon_loss = True
         self.recon_std_rescale = 0.5
@@ -89,7 +89,7 @@ class MultiviewDiffusionGuidance(nn.Module):
         rgb_as_latents: bool = False,
         fovy = None,
         fixed_step=None,
-        input_is_latent=True,
+        input_is_latent=False,
         guidance_scale=50,
         return_aux=False,
         use_nfsd=False,
@@ -98,14 +98,14 @@ class MultiviewDiffusionGuidance(nn.Module):
         
         batch_size = rgb.shape[0]
         camera = c2w
-
-        # rgb_BCHW = rgb.permute(0, 3, 1, 2) # 
         rgb_BCHW = rgb 
+        # rgb_BCHW = rgb.permute(0, 3, 1, 2) # 
         
-        batch_size = rgb.shape[0]
-        camera = c2w
+        
+        # batch_size = rgb.shape[0]
+        # camera = c2w
 
-        rgb_BCHW = rgb.permute(0, 3, 1, 2)
+        # rgb_BCHW = rgb.permute(0, 3, 1, 2)
 
         if text_embeddings is None:
             text_embeddings = prompt_utils.get_text_embeddings(
@@ -122,7 +122,7 @@ class MultiviewDiffusionGuidance(nn.Module):
                 # interp to 512x512 to be fed into vae.
                 pred_rgb = F.interpolate(rgb_BCHW, (self.image_size, self.image_size), mode='bilinear', align_corners=False)
                 # encode image into latents with vae, requires grad!
-                latents = self.encode_images(pred_rgb)
+                latents = self.encode_imgs(pred_rgb)
 
         # sample timestep
         if fixed_step is None:
@@ -134,6 +134,7 @@ class MultiviewDiffusionGuidance(nn.Module):
 
         # predict the noise residual with unet, NO grad!
         with torch.no_grad():
+            
             # add noise
             noise = torch.randn_like(latents)
             latents_noisy = self.model.q_sample(latents, t, noise)
@@ -147,9 +148,10 @@ class MultiviewDiffusionGuidance(nn.Module):
             else:
                 context = {"context": text_embeddings}
             
-            # import ipdb; ipdb.set_trace()
-            # latent_model_input.shape [2, 4, 64, 64]
+            
+            # latent_model_input.shape [8, 4, 32, 32]
             # t_input shape [2]
+            # import ipdb; ipdb.set_trace()
             noise_pred = self.model.apply_model(latent_model_input, t_expand, context)
 
         # perform guidance
