@@ -272,7 +272,7 @@ class DiffusionForTargetImg:
                 elif self.select_diffusion_option in ["sd"]:
                     train_step_fn = partial(self.sd.train_step, latents=latents)
                 elif self.select_diffusion_option == "mv_dream":
-                    train_step_fn = partial(self.mv_dream.train_step, rgb=latents, c2w=c2w)    #
+                    train_step_fn = partial(self.mv_dream.train_step, rgb=pred_rgb, c2w=c2w)    #
                 elif self.select_diffusion_option in ["sd_XL"]:
                     train_step_fn = partial(self.sd_XL.train_step, latents=latents)
             else:
