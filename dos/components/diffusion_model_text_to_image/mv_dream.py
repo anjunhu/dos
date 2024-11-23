@@ -13,8 +13,8 @@ from jaxtyping import Bool, Complex, Float, Inexact, Int, Integer, Num, Shaped, 
 from torch import Tensor
 from dos.utils.utils import C
 
-from mvdream.camera_utils import convert_opengl_to_blender, normalize_camera
-from mvdream.model_zoo import build_model
+from .mvdream.camera_utils import convert_opengl_to_blender, normalize_camera
+from .mvdream.model_zoo import build_model
 # from dos.components.diffusion_model_text_to_image.base import PromptProcessor
 
 class MultiviewDiffusionGuidance(nn.Module):
@@ -83,38 +83,31 @@ class MultiviewDiffusionGuidance(nn.Module):
 
     def train_step(
         self,
-        rgb,
         text_embeddings,
         c2w: Float[Tensor, "B 4 4"],
-        rgb_as_latents: bool = False,
+        rgb=None,
+        latents=None,
         fovy = None,
         fixed_step=None,
         input_is_latent=False,
         guidance_scale=50,
-        return_aux=False,
+        return_aux=True,
         use_nfsd=False,
+        rgb_as_latents=False,
         # **kwargs,
     ):
-        
-        batch_size = rgb.shape[0]
         camera = c2w
-        rgb_BCHW = rgb 
-        # rgb_BCHW = rgb.permute(0, 3, 1, 2) # 
-        
-        
-        # batch_size = rgb.shape[0]
-        # camera = c2w
-
-        # rgb_BCHW = rgb.permute(0, 3, 1, 2)
 
         if text_embeddings is None:
             text_embeddings = prompt_utils.get_text_embeddings(
                 elevation, azimuth, camera_distances, self.view_dependent_prompting
             )
+            
+        if rgb is not None:
+            rgb_BCHW = rgb 
+            # rgb_BCHW = rgb.permute(0, 3, 1, 2)
 
-        if input_is_latent:
-            latents = rgb
-        else:
+        if latents is None:
             latents: Float[Tensor, "B 4 64 64"]
             if rgb_as_latents:
                 latents = F.interpolate(rgb_BCHW, (64, 64), mode='bilinear', align_corners=False) * 2 - 1
@@ -132,26 +125,27 @@ class MultiviewDiffusionGuidance(nn.Module):
             t = torch.full([1], fixed_step, dtype=torch.long, device=latents.device)
         t_expand = t.repeat(text_embeddings.shape[0])
 
+        torch.set_grad_enabled(False)
         # predict the noise residual with unet, NO grad!
-        with torch.no_grad():
-            
+        with torch.autocast(device_type="cuda", dtype=torch.float16):
             # add noise
-            noise = torch.randn_like(latents)
+            noise = torch.randn_like(latents, dtype=torch.float16)
             latents_noisy = self.model.q_sample(latents, t, noise)
             # pred noise
             latent_model_input = torch.cat([latents_noisy] * 2)
             # save input tensors for UNet
             if camera is not None:
                 camera = self.get_camera_cond(camera, fovy)
+                # shape of camera should be [8, 16]
                 camera = camera.repeat(2,1).to(text_embeddings)
+                # shape of context should be [8, 77, 1024]
+                # shape of self.n_view should be 4
                 context = {"context": text_embeddings, "camera": camera, "num_frames": self.n_view}
             else:
                 context = {"context": text_embeddings}
-            
-            
+             
             # latent_model_input.shape [8, 4, 32, 32]
-            # t_input shape [2]
-            # import ipdb; ipdb.set_trace()
+            # t_expand shape should be [8]
             noise_pred = self.model.apply_model(latent_model_input, t_expand, context)
 
         # perform guidance
@@ -172,9 +166,10 @@ class MultiviewDiffusionGuidance(nn.Module):
                 latents_recon_adjust = latents_recon.clone() * factor.squeeze(1).repeat_interleave(self.n_view, dim=0)
                 latents_recon = self.recon_std_rescale * latents_recon_adjust + (1-self.recon_std_rescale) * latents_recon
 
-            # x0-reconstruction loss from Sec 3.2 and Appendix
-            loss = 0.5 * F.mse_loss(latents, latents_recon.detach(), reduction="sum") / latents.shape[0]
-            grad = torch.autograd.grad(loss, latents, retain_graph=True)[0]
+            with torch.enable_grad():
+                # x0-reconstruction loss from Sec 3.2 and Appendix
+                loss = 0.5 * F.mse_loss(latents, latents_recon.half().detach(), reduction="sum") / latents.shape[0]
+                grad = torch.autograd.grad(loss, latents, retain_graph=True)[0]
 
         else:
             # Original SDS
@@ -190,11 +185,13 @@ class MultiviewDiffusionGuidance(nn.Module):
             target = (latents - grad).detach()
             # d(loss)/d(latents) = latents - target = latents - (latents - grad) = grad
             loss = 0.5 * F.mse_loss(latents, target, reduction="sum") / latents.shape[0]
-
-        return {
-            "loss_sds": loss,
-            "grad_norm": grad.norm(),
-        }
+        torch.set_grad_enabled(True)
+        # updated in this mv_dream file
+        if return_aux:
+            aux = {'grad': grad.norm(), 'latents': latents}
+            return loss, aux
+        else:
+            return loss 
 
     def update_step(self, epoch: int, global_step: int, on_load_weights: bool = False):
         min_step_percent = C(self.min_step_percent, epoch, global_step)

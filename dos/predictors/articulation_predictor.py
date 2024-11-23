@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 
 
-class ArticulationPredictor(nn.Module):
+class ArticulationPredictor(nn.Module): # Trainable Mapping from original bone predction to ideal bone locations
     
     def __init__(self, size_dataset, num_bones, degree):
         super(ArticulationPredictor, self).__init__()
@@ -21,10 +21,10 @@ class ArticulationPredictor(nn.Module):
         self.bones_rotations.weight.data *= 0.0
         
         # Initialize the embedding weights to zeros
-        # self.bones_rotations.weight.data.zero_()
+        self.bones_rotations.weight.data.zero_()
         
         # Initialising the bone rotation parameter with zeros to make sure it starts from rest pose.
-        # nn.init.zeros_(self.bones_rotations.weight)
+        # nn.init.zeros_(self.bones_rotations.weight) # the bone movement is smaller
         
         # nn.init.uniform_(self.bones_rotations.weight, -rad, rad)
         

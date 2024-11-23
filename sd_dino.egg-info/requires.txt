@@ -1,0 +1,8 @@
+loguru>=0.5.3
+faiss-cpu>=1.7.1
+matplotlib>=3.4.2
+tqdm>=4.61.2
+numpy>=1.21.0
+gdown>=3.13.0
+mask2former@ file://localhost//users/oishideb/dos/third_party/Mask2Former/
+odise@ file://localhost//users/oishideb/dos/third_party/ODISE/

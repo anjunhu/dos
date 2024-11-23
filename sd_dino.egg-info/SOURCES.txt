@@ -1,0 +1,7 @@
+README.md
+setup.py
+sd_dino.egg-info/PKG-INFO
+sd_dino.egg-info/SOURCES.txt
+sd_dino.egg-info/dependency_links.txt
+sd_dino.egg-info/requires.txt
+sd_dino.egg-info/top_level.txt

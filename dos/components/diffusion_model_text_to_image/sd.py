@@ -38,7 +38,7 @@ def seed_everything(seed):
     #torch.backends.cudnn.benchmark = True
 
 class StableDiffusion(nn.Module):
-    def __init__(self, device, cache_dir=None, sd_version='1.5', hf_key=None, torch_dtype=torch.float32):
+    def __init__(self, device, cache_dir=None, sd_version='2.1', hf_key=None, torch_dtype=torch.float32):
         super().__init__()
 
         self.device = device
@@ -62,7 +62,6 @@ class StableDiffusion(nn.Module):
         print(f'[INFO] loading stable diffusion {model_key}')
 
         # Create model
-        # cache_dir="/scratch/local/ssd/tomj/cache/huggingface_hub"
         self.vae = AutoencoderKL.from_pretrained(model_key, subfolder="vae", torch_dtype=torch_dtype, cache_dir=cache_dir).to(self.device)
         self.tokenizer = CLIPTokenizer.from_pretrained(model_key, subfolder="tokenizer", cache_dir=cache_dir)
         self.text_encoder = CLIPTextModel.from_pretrained(model_key, subfolder="text_encoder", cache_dir=cache_dir).to(self.device)
@@ -87,10 +86,16 @@ class StableDiffusion(nn.Module):
         return text_embeddings
 
     # TODO: this is the same for all the classes, so it should be moved to a common class
-    def get_text_embeds(self, prompt, negative_prompt, use_nfsd=False):
+    def get_text_embeds(self, prompt, negative_prompt, use_nfsd=False, mv_dream = False):
         # prompt, negative_prompt: [str]
         uncond_embeddings = self.get_text_embeds_for_prompt(negative_prompt)
         text_embeddings = self.get_text_embeds_for_prompt(prompt)
+        
+        if mv_dream:
+            # 4 is batch_size for mv_dream TODO - Remove the hard-coding later
+            uncond_embeddings = uncond_embeddings.expand(4, -1, -1)
+            text_embeddings = text_embeddings.expand(4, -1, -1)
+            
         if use_nfsd:
             ood_prompt = "unrealistic, blurry, low quality, out of focus, ugly, low contrast, dull, dark, low-resolution, gloomy"
             n_prompts = uncond_embeddings.shape[0]

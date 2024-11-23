@@ -27,6 +27,7 @@ from torch import nn
 from torch.utils.data import Dataset
 from tqdm import tqdm
 import neptune
+from neptune.types import File
 import os
 from .utils import utils
 import ipdb
@@ -93,6 +94,7 @@ class Trainer:
 
         self.train_dataset = InfiniteDataset(self.train_dataset)
         self.model = self.model.to(self.device)
+        print(self.model)
         
         self.renderer = self.renderer if self.renderer is not None else Renderer() # Added
 
@@ -196,6 +198,7 @@ class Trainer:
         visualize=False,
         iteration=None,
         num_visuals=1,
+        **kwargs,
     ):
         count = 0
         # TODO: where it should actually be done
@@ -204,7 +207,7 @@ class Trainer:
 
         # rotation, translation, forward_aux = self.model(batch)
         
-        model_outputs = self.model(batch, num_batches, iteration) 
+        model_outputs = self.model(batch, num_batches, iteration, prev_loss=kwargs['prev_loss']) 
         
         metrics_dict = self.model.get_metrics_dict(model_outputs, batch)
         
@@ -214,7 +217,19 @@ class Trainer:
         print(f"The 'get_loss_dict' took {end_time - start_time} seconds to run.")
         # with open('log.txt', 'a') as file:
         #     file.write(f"The 'get_loss_dict' took {end_time - start_time} seconds to run.\n")
+        # rendered_kps = loss_dict["rendered_kps"]
+        # target_corres_kps = model_outputs["target_corres_kps"] # [1, 60-rej, 2]
+        # per_kp_mse = ((rendered_kps - target_corres_kps) ** 2).sum(0).sum(-1)
+        # print(per_kp_mse.shape,)
+        # figure, ax = plt.subplots()
+        # ax.hist(per_kp_mse)
+        # neptune_run[log_prefix + "_per_kp_mse"].upload(figure)
         
+        print(model_outputs['mask_pred'].shape, model_outputs['target_silhouette'].shape)
+        # channel_last_torch_tensor = torch.moveaxis(model_outputs['target_silhouette'][0].cpu(), 0, -1)
+        neptune_run[log_prefix + "/target_silhouettes"].upload(File.as_image(model_outputs['target_silhouette'][0].cpu()))
+        # channel_last_torch_tensor = torch.moveaxis(model_outputs['render_silhouette'][0].cpu(), 0, -1)
+        neptune_run[log_prefix + "/render_silhouettes"].upload(File.as_image(model_outputs['mask_pred'][0].cpu()))
     
         if visualize:
             
@@ -222,7 +237,8 @@ class Trainer:
             
             start_time = time.time()
             
-            if self.save_individual_img:   
+            if self.save_individual_img:
+
                 for index, visual in enumerate(model_outputs['rendered_image_with_kps']):
                     neptune_run[log_prefix + "/rendered_image_with_kps_"+ str(index)].append(visual, step=iteration)
                             
@@ -317,7 +333,8 @@ class Trainer:
             collate_fn=self.train_dataset_collate_fn,
         )
 
-        # Define optimizer
+        # Define optimizer]
+        # print('self.learning_rate', self.learning_rate)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         
         # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
@@ -344,6 +361,7 @@ class Trainer:
         num_batches = 0
         # Training loop
         print('len train_loader', len(train_loader))
+        loss = 1e9
         for run_iteration, batch in tqdm(enumerate(train_loader)):
             iteration = start_total_iter + run_iteration
             
@@ -367,6 +385,7 @@ class Trainer:
                 log_prefix="train",
                 visualize=visualize,
                 iteration=iteration,
+                prev_loss=loss,
             )
             
             keys_list = list(batch.keys())

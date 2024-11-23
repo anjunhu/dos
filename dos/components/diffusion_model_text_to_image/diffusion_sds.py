@@ -136,6 +136,17 @@ class DiffusionForTargetImg:
     def run_experiment(self, input_image, image_fr_path=False, direction = ["back"], index=0, c2w = None):
         if input_image is not None:
             assert len(input_image.shape) == 4, "input_image should be a batch of images"
+        print(input_image.shape)
+        
+        import os, sys
+        os.makedirs("renderings", exist_ok=True)
+        
+        # Loop through each image in the batch
+        for i, image in enumerate(input_image):
+            # Convert the tensor to a PIL image
+            image = torchvision.transforms.ToPILImage()(image)
+            image.save(os.path.join("renderings", f'pig_{45+i*90:03d}.png'))
+        sys.exit(0)
 
         if self.view_dependent_prompting:
             prompt_with_view_direc = self.append_view_direction(self.prompts, direction)
@@ -147,15 +158,16 @@ class DiffusionForTargetImg:
                 prompt_with_view_direc, self.negative_prompts
             )
         elif self.select_diffusion_option in ["sd", "mv_dream"]:
+            if self.select_diffusion_option ==  "mv_dream":
+                set_mv_dream_flag = True
+            else:
+                set_mv_dream_flag = False 
             # Uses pre-trained CLIP Embeddings; # Prompts -> text embeds
-            # SHAPE OF text_embeddings [2, 77, 768]
+            # SHAPE OF text_embeddings for sd should be [2, 77, 768]
+            # SHAPE OF text_embeddings for mv_dream should be [8, 77, 1024]
             text_embeddings = self.sd.get_text_embeds(
-                prompt_with_view_direc, self.negative_prompts, use_nfsd=self.use_nfsd
+                prompt_with_view_direc, self.negative_prompts, use_nfsd=self.use_nfsd, mv_dream = set_mv_dream_flag 
             )
-        # elif self.select_diffusion_option == "mv_dream":
-        #     text_embeddings=self.sd.get_text_embeds(
-        #         prompt_with_view_direc, self.negative_prompts, use_nfsd=self.use_nfsd
-        #     )
             
         elif self.select_diffusion_option == "sd_XL":
             text_embeddings = self.sd_XL.get_text_embeds(
@@ -194,6 +206,9 @@ class DiffusionForTargetImg:
                     torch.from_numpy(pred_rgb).float().permute(2, 0, 1) / 127.5 - 1
                 )
                 pred_rgb = pred_rgb.unsqueeze(0).to(self.device)
+            
+            elif self.select_diffusion_option == "mv_dream":
+                pred_rgb = input_image 
             else:
                 img = input_image.repeat(text_embeddings.shape[0] // 2, 1, 1, 1)
                 pred_rgb = img
@@ -209,10 +224,8 @@ class DiffusionForTargetImg:
             )
             pred_rgb_512 = pred_rgb_512.to(self.torch_dtype)
 
-            if self.select_diffusion_option == "sd":
+            if self.select_diffusion_option in ["sd", "mv_dream"] :
                 latents = self.sd.encode_imgs(pred_rgb_512)
-            if self.select_diffusion_option == "mv_dream":
-                latents = self.sd.encode_imgs(pred_rgb_512)     # using sd func
             if self.select_diffusion_option == "sd_XL":
                 latents = self.sd_XL.encode_imgs(pred_rgb_512)
             elif self.select_diffusion_option == "sd_dds_loss":
@@ -226,14 +239,13 @@ class DiffusionForTargetImg:
             # latents = torch.randn_like(latents)
             # latents shape torch.Size([1, 4, 64, 64])
             latents = image_to_latents(pred_rgb)
-            latents = latents.detach().clone().requires_grad_(True)
+            latents = latents.detach().clone().half().requires_grad_(True)
             param = latents
         else:
             raise ValueError(f"Unknown mode: {self.mode}")
 
-        optimizer = self.optimizer_class([param], lr=self.lr, momentum=self.momentum)
+        optimizer = self.optimizer_class([param], lr=self.lr*0.5, momentum=self.momentum)
 
-        #
         if self.mode == "sds_latent-l2_image":
             optimizer_l2 = self.optimizer_class([pred_rgb], lr=self.lr_l2)
 
@@ -244,7 +256,6 @@ class DiffusionForTargetImg:
         # optimize
         for i in tqdm(range(self.num_inference_steps)):
             # optimizer.zero_grad()
-
             if self.mode == "sds_image":
                 # 'train_step_fn' - training steps are set differently based on the mode.
                 # partial function creates a new func by passing the function and the arguments we want to pre-fill to partial.
@@ -272,7 +283,7 @@ class DiffusionForTargetImg:
                 elif self.select_diffusion_option in ["sd"]:
                     train_step_fn = partial(self.sd.train_step, latents=latents)
                 elif self.select_diffusion_option == "mv_dream":
-                    train_step_fn = partial(self.mv_dream.train_step, rgb=pred_rgb, c2w=c2w)    #
+                    train_step_fn = partial(self.mv_dream.train_step, latents=latents, c2w=c2w)
                 elif self.select_diffusion_option in ["sd_XL"]:
                     train_step_fn = partial(self.sd_XL.train_step, latents=latents)
             else:
@@ -297,20 +308,19 @@ class DiffusionForTargetImg:
                     rgb_decoded.save(f"{self.output_dir}/{i}_dds_loss_rgb_decoded.jpg")
 
             else:
-                # if self.select_diffusion_option == "mv_dream":
-                #     loss, aux = train_step_fn(
-                #         text_embeddings=None
-                #     )
-                # else:
-                
                 # For SD, mv_dream, SD_XL and DeepFloyd sds Loss
-                loss, aux = train_step_fn(
-                    text_embeddings=text_embeddings,
-                    guidance_scale=self.guidance_scale,
-                    fixed_step=self.schedule[i],
-                    return_aux=True,
-                    use_nfsd=self.use_nfsd,
-                )
+                if self.select_diffusion_option == "mv_dream":
+                    loss, aux = train_step_fn(
+                            text_embeddings=text_embeddings,
+                        )
+                else:
+                    loss, aux = train_step_fn(
+                        text_embeddings=text_embeddings,
+                        guidance_scale=self.guidance_scale,
+                        fixed_step=self.schedule[i],
+                        return_aux=True,
+                        use_nfsd=self.use_nfsd,
+                    )
                 
                 if self.mode == "sds_image":
                     latents = aux["latents"]
@@ -318,29 +328,26 @@ class DiffusionForTargetImg:
                 loss.backward()
 
                 # print min and max of latents, latents grad, and rgb_decoded and pred_rgb
-                print(
-                    f"latents: min={latents.min().item():.4f}, max={latents.max().item():.4f}"
-                )
-                print(
-                    f"latents.grad: min={latents.grad.min().item():.4f}, max={latents.grad.max().item():.4f}"
-                )
-                print(
-                    f"pred_rgb: min={pred_rgb.min().item():.4f}, max={pred_rgb.max().item():.4f}"
-                )
+                # print(
+                #     f"latents: min={latents.min().item():.4f}, max={latents.max().item():.4f}"
+                # )
+                # if self.select_diffusion_option != "mv_dream":
+                #     print(
+                #         f"latents.grad: min={latents.grad.min().item():.4f}, max={latents.grad.max().item():.4f}"
+                #     )
+                # print(
+                #     f"pred_rgb: min={pred_rgb.min().item():.4f}, max={pred_rgb.max().item():.4f}"
+                # )
 
                 # Decoding the Latent to image space for Stable Diffusion
                 # TODO: use the same variable name for all the models
+                sd = self.sd if self.select_diffusion_option in ["sd", "mv_dream"] else self.sd_XL
                 
-                if self.select_diffusion_option in ["sd"]:
-                    sd = self.sd if self.select_diffusion_option in ["sd"] else self.sd_XL
-                else:
-                    sd = self.mv_dream if self.select_diffusion_option in ["mv_dream"] else self.sd_XL
-                    
                 # TODO: add option to decode only the last image if the mode is sds_latent - get speed up
                 rgb_decoded = sd.decode_latents(latents)
-                print(
-                    f"rgb_decoded: min={rgb_decoded.min().item():.4f}, max={rgb_decoded.max().item():.4f}"
-                )
+                # print(
+                #     f"rgb_decoded: min={rgb_decoded.min().item():.4f}, max={rgb_decoded.max().item():.4f}"
+                # )
                 optimizer.step()
                 latents.grad = None
 
@@ -362,9 +369,9 @@ class DiffusionForTargetImg:
                     print(f"loss_l2: {loss_l2.item():.4f}")
                     loss_l2.backward()
                     # print min and max of pred_rgb grad in scientific notation
-                    print(
-                        f"pred_rgb.grad: min={pred_rgb.grad.min().item():.4e}, max={pred_rgb.grad.max().item():.4e}"
-                    )
+                    # print(
+                    #     f"pred_rgb.grad: min={pred_rgb.grad.min().item():.4e}, max={pred_rgb.grad.max().item():.4e}"
+                    # )
                     optimizer_l2.step()
 
                     # replace latents tensor value with current encoded image (do not create new var)
@@ -391,6 +398,7 @@ class DiffusionForTargetImg:
             n_images = len(all_imgs)
             all_imgs = rearrange(torch.stack(all_imgs), "t b c h w -> (b t) c h w")
             all_imgs = torchvision.utils.make_grid(all_imgs, nrow=n_images, pad_value=1)
+
 
             if self.select_diffusion_option in ["sd", "sd_XL", "mv_dream"]:
                 all_decoded_imgs = rearrange(

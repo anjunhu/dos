@@ -206,3 +206,4 @@ xatlas==0.0.6
 yacs==0.1.8
 yarl==1.8.1
 zipp==3.11.0
+git+https://github.com/bytedance/MVDream

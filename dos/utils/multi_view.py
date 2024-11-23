@@ -132,7 +132,7 @@ def is_side_view(phis, tolerance=np.deg2rad(1), device='cpu'):
     return torch.any(torch.isclose(phis, ninety_degrees, atol=tolerance)) or torch.any(torch.isclose(phis, minus_ninety_degrees, atol=tolerance))
 
 
-def poses_along_azimuth(size, device, batch_number=0, iteration=0,  radius=2.5, theta=90, phi_range=[0, 360], multi_view_option='multiple_random_phi_in_batch'):
+def poses_along_azimuth(size, device, batch_number=0, iteration=0,  radius=2.5, theta=90, phi_range=[0, 360], multi_view_option='multiple_random_phi_in_batch', **kwargs):
     ''' generate random poses from an orbit camera along uniformly distributed azimuth and fixed elevation
     Args:
         size: batch size of generated poses.
@@ -142,9 +142,11 @@ def poses_along_azimuth(size, device, batch_number=0, iteration=0,  radius=2.5, 
     Return:
         poses: [size, 4, 4]
     '''
-    global phis_state  # Reference the global variable
+    # global phis_state  # Reference the global variable
+    print('poses_along_azimuth', kwargs)
     
-    initialize_phis_state(device)
+    if iteration == 0:
+        initialize_phis_state(device)
     
     theta = np.deg2rad(theta)
     
@@ -153,12 +155,24 @@ def poses_along_azimuth(size, device, batch_number=0, iteration=0,  radius=2.5, 
         phis = torch.tensor([np.deg2rad(90), np.deg2rad(-90)], dtype=torch.float, device=device)
         
     elif multi_view_option == 'guidance_and_rand_views_in_batch':
-        if batch_number == 0:
-            phis = torch.tensor([np.deg2rad(90)], dtype=torch.float, device=device)  # Only one side view for the odd batches
-        else:
+        # phis selects two values, a fixed side view (90 degrees) and a random view each iteration.
+                                                # Here, 1 represents Size i.e 1 random view
+        phis = torch.tensor([np.deg2rad(90), torch.rand(1, device=device) * (np.deg2rad(phi_range[1]) - np.deg2rad(phi_range[0])) + np.deg2rad(phi_range[0])
+                            ], dtype=torch.float, device=device)  
+        
+    elif multi_view_option == 'rand_phi_each_step_along_azi_for_one_fixed_iter':
+        # Check if it's time to update the phis value
+        if iteration > 0 and iteration % phis_state["update_interval"] == 0:
+            # Generate new phis and update the state
             phis = torch.rand(size, device=device) * (np.deg2rad(phi_range[1]) - np.deg2rad(phi_range[0])) + np.deg2rad(phi_range[0])
+            phis_state["last_phis"] = phis
+            phis_state["last_update_iteration"] = iteration
+        else:
+            # Use the last stored phis value
+            phis = phis_state["last_phis"]  
+        print(phis, 'UPDATING PHIS at iteration', iteration, phis_state)
     
-    elif multi_view_option == 'random_phi_each_step_along_azimuth':
+    elif multi_view_option == 'rand_phi_each_step_along_azi_long_short_update_intervals':
         
         # Usage within the update logic
         if phis_state["last_phis"] is not None:
@@ -172,19 +186,19 @@ def poses_along_azimuth(size, device, batch_number=0, iteration=0,  radius=2.5, 
             current_update_interval = phis_state["long_update_interval"]
 
         # Check if it's time to update the phis value
-        if iteration - phis_state["last_update_iteration"] >= current_update_interval or phis_state["last_phis"] is None:
+        if iteration > 0 and iteration % current_update_interval == 0:
             # Generate new phis and update the state
             phis = torch.rand(size, device=device) * (np.deg2rad(phi_range[1]) - np.deg2rad(phi_range[0])) + np.deg2rad(phi_range[0])
             phis_state["last_phis"] = phis
             phis_state["last_update_iteration"] = iteration
         else:
             # Use the last stored phis value
-            phis = phis_state["last_phis"] 
+            phis = phis_state["last_phis"]
     
     elif multi_view_option == 'alternate_2_side_views_each_step_along_azimuth':
         # phis = get_2_alternating_phi(device)
         
-        if iteration - phis_state["last_update_iteration"] >= phis_state["update_interval"] or phis_state["last_phis"] is None:
+        if iteration > 0 and iteration % phis_state["update_interval"] == 0:
             # Generate new phis and update the state
             phis = get_2_alternating_phi(device)
             

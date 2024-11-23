@@ -13,6 +13,9 @@ import torch.nn.functional as nn_functional
 import torchvision.transforms.functional as F
 import torchvision
 from PIL import Image, ImageDraw
+from transformers import CLIPSegProcessor, CLIPSegForImageSegmentation
+from lang_sam import LangSAM
+from torchvision.transforms.functional import to_pil_image, to_tensor
 
 from dos.components.fuse.compute_correspond import \
     ComputeCorrespond  # compute_correspondences_sd_dino
@@ -34,6 +37,31 @@ from ..utils import mesh as mesh_utils
 from ..utils import multi_view, utils
 from ..utils import visuals as visuals_utils
 from .base import BaseModel
+
+ORIGINAL_BONELINE_MIDPOINTS = torch.tensor([[
+         [-8.6736e-19,  1.6966e-01,  4.5859e-01],                                                          
+         [ 3.7241e-02,  2.6587e-01,  3.6438e-01],                                                           
+         [ 2.4905e-02,  2.4998e-01,  3.2582e-01],                                                           
+         [-3.4694e-18,  2.5090e-01,  1.3072e-01],                                                           
+         [ 9.5681e-18, -1.7565e-02, -4.6908e-01],                                                           
+         [ 9.0419e-02,  1.5531e-01, -2.4764e-01],  # left front leg                                                         
+         [ 1.2550e-17,  2.4773e-01, -9.7535e-02],                                                           
+         [ 6.0715e-18,  2.5695e-01,  8.5168e-02],                                                           
+         [ 5.3383e-02, -1.7000e-01,  1.1093e-01],                                                           
+         [ 2.8553e-02,  3.5589e-02,  2.1846e-01],                                                           
+         [ 1.4559e-02,  2.3682e-01,  2.8486e-01],                                                           
+         [ 5.7312e-02, -1.5800e-01, -4.0988e-01],                                                           
+         [ 1.0146e-01,  4.7310e-02, -2.3996e-01],                                                           
+         [ 3.3610e-17,  2.4889e-01, -6.8492e-02],                                                           
+         [-5.7312e-02, -1.5800e-01, -4.0988e-01],                                                           
+         [-6.8522e-17, -5.8495e-02, -2.3671e-01],  # right front leg                                                            
+         [ 3.3610e-17,  2.4889e-01, -6.8492e-02],                                                           
+         [-4.0898e-02, -1.8964e-01,  8.1404e-02],                                                           
+         [-2.2204e-16,  1.9243e-02,  2.3030e-01],                                                           
+         [ 1.4559e-02,  2.3682e-01,  2.8486e-01]]], device='cuda:0')
+
+target_img_rgb = None
+langsam_model = LangSAM()
 
 class Articulator(BaseModel):
     """
@@ -149,9 +177,9 @@ class Articulator(BaseModel):
             
         # SELECT KEYPOINT SAMPLING OPTION
         if self.mode_kps_selection == "kps_fr_sample_on_bone_line":
-            kps_img_resolu = self.kps_fr_sample_on_bone_line(bones, mvp, articulated_mesh, visible_vertices, self.num_sample_bone_line, eroded_mask)
+            kps_img_resolu, bones_midpts_in_3D = self.kps_fr_sample_on_bone_line(bones, mvp, articulated_mesh, visible_vertices, self.num_sample_bone_line, eroded_mask)
         elif self.mode_kps_selection == "kps_fr_sample_farthest_points":
-            kps_img_resolu = self.kps_fr_sample_farthest_points(rendered_image, mvp, visible_vertices, articulated_mesh, eroded_mask, self.num_sample_farthest_points)
+            kps_img_resolu, bones_midpts_in_3D = self.kps_fr_sample_farthest_points(rendered_image, mvp, visible_vertices, articulated_mesh, eroded_mask, self.num_sample_farthest_points)
         
         output_dict = {}
         
@@ -239,6 +267,7 @@ class Articulator(BaseModel):
         
             
         output_dict = {
+        "bones_midpts_in_3D": bones_midpts_in_3D,
         "rendered_kps": kps_img_resolu,                     
         "target_corres_kps": corres_target_kps_tensor_stack,         
         "rendered_image_with_kps": rendered_image_with_kps_list,
@@ -258,7 +287,7 @@ class Articulator(BaseModel):
         return output_dict
 
     
-    def forward(self, batch, num_batches, iteration):
+    def forward(self, batch, num_batches, iteration, **kwargs):
         
         batch_size = batch["image"].shape[0]
         if self.shape_template is not None:
@@ -269,7 +298,7 @@ class Articulator(BaseModel):
         # estimate bones
         # bones_predictor_outputs is dictionary with keys - ['bones_pred', 'skinnig_weights', 'kinematic_chain', 'aux'])
         start_time = time.time()
-        bones_predictor_outputs = self.bones_predictor(mesh.v_pos)
+        bones_predictor_outputs = self.bones_predictor(mesh.v_pos) # bones_predictor(mesh vertices)
         end_time = time.time()  # Record the end time
         # with open('log.txt', 'a') as file:
         #     file.write(f"The 'bones_predictor' took {end_time - start_time} seconds to run.\n")
@@ -345,6 +374,7 @@ class Articulator(BaseModel):
                 pose, direction = multi_view.poses_along_azimuth(self.num_pose_for_optim, self.device, batch_number=num_batches, iteration=iteration, radius=self.random_camera_radius, phi_range=self.phi_range_for_optim, multi_view_option = self.multi_view_optimise_option)
         else:
             pose=batch["pose"]
+        # print(material, texture_features, pose)
         
         if "background" in batch:
             background = batch["background"]
@@ -397,12 +427,14 @@ class Articulator(BaseModel):
             rendered_image = renderer_outputs["image_pred"]
         
         # GENERATING TARGET IMAGES USING DIFFUSION (SD or DF)
-        target_img_rgb = self.diffusion_Text_to_Target_Img.run_experiment(
-            input_image=rendered_image,
-            image_fr_path=False,
-            direction = direction,
-            c2w = w2c.permute(0, 2, 1),     # Transpose the 3D matrix
-        )
+        if iteration % 15 == 0:
+            global target_img_rgb
+            target_img_rgb = self.diffusion_Text_to_Target_Img.run_experiment(
+                input_image=rendered_image,
+                image_fr_path=False,
+                direction = direction,
+                c2w = w2c.permute(0, 2, 1),     # Transpose the 3D matrix
+            )
         
         # # Inserts the new image into a dictionary
         # # all_generated_target_img["target_img_NO_kps"].shape is [1, 3, 256, 256]
@@ -448,9 +480,14 @@ class Articulator(BaseModel):
         # outputs.update(target_img_rgb)
         outputs.update(renderer_outputs)        # renderer_outputs keys are dict_keys(['image_pred', 'mask_pred', 'albedo', 'shading'])
         outputs.update(correspondences_dict)
-
+        outputs["target_img_rgb"] = target_img_rgb # range [0,1]
+        with torch.no_grad():
+            target_pil = to_pil_image(outputs["target_img_rgb"][0])
+            masks , _, _, _  = langsam_model.predict(target_pil, "cow")
+            outputs["target_silhouette"] = masks.float()
+            
         ## Saving poses along the azimuth
-        self.save_pose_along_azimuth(articulated_mesh, material, self.path_to_save_images)      
+        self.save_pose_along_azimuth(articulated_mesh, material, self.path_to_save_images, iteration)      
         
         return outputs
 
@@ -464,11 +501,19 @@ class Articulator(BaseModel):
         print('Calculating l2 loss')
         # loss = nn_functional.mse_loss(rendered_keypoints, target_keypoints, reduction='mean')
         model_outputs["rendered_kps"] = model_outputs["rendered_kps"].to(self.device)
-        model_outputs["target_corres_kps"] = model_outputs["target_corres_kps"].to(self.device)
+        model_outputs["target_corres_kps"] = model_outputs["target_corres_kps"].to(self.device) 
 
-        loss = nn_functional.mse_loss(model_outputs["rendered_kps"], model_outputs["target_corres_kps"], reduction='mean')
-       
-        return {"loss": loss}
+         # [1, 60-rej, 2]
+        loss = nn_functional.mse_loss(model_outputs["rendered_kps"], model_outputs["target_corres_kps"], reduction='none').mean()
+        # loss = lqoss.sum(-1)
+        # bottomk_values, bottomk_indices = torch.topk(loss, 40, dim=1, largest=False, sorted=True)
+        # loss = bottomk_values.mean()
+        # loss = nn_functional.mse_loss(model_outputs["bones_midpts_in_3D"][0, 5], model_outputs["bones_midpts_in_3D"][0, 15], reduction='none').sum()
+        
+        # torch.Size([1, 256, 256]) 
+        loss = nn_functional.mse_loss(model_outputs["mask_pred"].float(), model_outputs["target_silhouette"].detach().float().to(model_outputs["mask_pred"].device))
+
+        return {"loss": loss, "rendered_kps": model_outputs["rendered_kps"], "target_corres_kps": model_outputs["target_corres_kps"]}
 
     def get_visuals_dict(self, model_outputs, batch, num_visuals=1):
         def _get_visuals_dict(input_dict, names):
@@ -519,13 +564,13 @@ class Articulator(BaseModel):
             
 
     ## Saving poses along the azimuth for Visualisation
-    def save_pose_along_azimuth(self, articulated_mesh, material, path_to_save_images):
+    def save_pose_along_azimuth(self, articulated_mesh, material, path_to_save_images, iteration):
         
         if self.view_option == "single_view":
             # Added for debugging purpose
             pose, direction = multi_view.poses_along_azimuth_single_view(self.num_pose_for_visual, device=self.device)
         else:
-            pose, direction = multi_view.poses_along_azimuth(self.num_pose_for_visual, device=self.device, radius=self.random_camera_radius, phi_range=self.phi_range_for_visual, multi_view_option ='multiple_random_phi_in_batch')
+            pose, direction = multi_view.poses_along_azimuth(self.num_pose_for_visual, device=self.device, iteration=iteration, radius=self.random_camera_radius, phi_range=self.phi_range_for_visual, multi_view_option ='multiple_random_phi_in_batch')
         
         renderer_outputs = self.renderer(
             articulated_mesh,
@@ -534,7 +579,7 @@ class Articulator(BaseModel):
             im_features= None
         )
         
-        for i in range(pose.shape[0]):
+        for i in range(pose.shape[-1]):
             rendered_image_PIL = F.to_pil_image(renderer_outputs["image_pred"][i])
             rendered_image_PIL = resize(rendered_image_PIL, target_res = 840, resize=True, to_pil=True)
             dir_path = f'{path_to_save_images}/azimuth_pose/rendered_img/'
@@ -626,7 +671,7 @@ class Articulator(BaseModel):
         bone_end_pt_1_3D = bones[:, :, 0, :]  # one end of the bone in 3D
         bone_end_pt_2_3D = bones[:, :, 1, :]  # other end of the bone in 3D
         
-        bones_in_3D_all_kp40 = torch.cat((bone_end_pt_1_3D, bone_end_pt_2_3D), dim=1)
+        bones_in_3D_all_kp40 = torch.cat((bone_end_pt_1_3D, bone_end_pt_2_3D), dim=1) # 20 bones x 2 end points
         bones_2D_proj_all_kp40 = geometry_utils.project_points(bones_in_3D_all_kp40, mvp)
         
         bone_end_pt_1_projected_in_2D = geometry_utils.project_points(bone_end_pt_1_3D, mvp)
@@ -640,6 +685,7 @@ class Articulator(BaseModel):
         bones_midpts_projected_in_2D = geometry_utils.project_points(bones_midpts_in_3D, mvp)
     
         start_time = time.time()
+        # Need to figure out closest_visible_points in 3D
         closest_midpts = self.closest_visible_points(bones_midpts_in_3D, articulated_mesh.v_pos, visible_vertices) # , eroded_mask)
         
         end_time = time.time()  # Record the end time
@@ -648,6 +694,7 @@ class Articulator(BaseModel):
         print(f"The closest_visible_points function took {end_time - start_time} seconds to run.")
         
         ## shape of bones_closest_pts_2D_proj is ([Batch-size, 20, 2])
+        # print('\n>>>>>> closest_midpts\n', closest_midpts)
         bones_closest_midpts_projected_in_2D_all_kp20 = geometry_utils.project_points(closest_midpts, mvp)
         
         # ADDED next 3 lines: Convert to Pixel Coordinates of the mask
@@ -681,7 +728,7 @@ class Articulator(BaseModel):
         bones_all = self.closest_visible_points(bones_all, articulated_mesh.v_pos, visible_vertices) # , eroded_mask)
         # bones_closest_pts_2D_proj_all_kp40 = geometry_utils.project_points(bones_all, mvp)
         
-        return kps_img_resolu
+        return kps_img_resolu, bones_midpts_in_3D
         
     
     def kps_fr_sample_farthest_points(self, rendered_image, mvp, visible_vertices, articulated_mesh, eroded_mask, num_samples):
